@@ -13,7 +13,7 @@
  * The old cache is deleted automatically; clients receive the update toast.
  */
 
-const CACHE_VERSION = 'dh-bingo-v3.1';         // ← bump this on every deploy
+const CACHE_VERSION = 'dh-bingo-v1.0';         // ← bump this on every deploy
 const SHELL_CACHE   = `shell-${CACHE_VERSION}`;
 const FONT_CACHE    = 'fonts-v1';              // fonts change rarely; keep separate
 

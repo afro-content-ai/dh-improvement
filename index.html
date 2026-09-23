@@ -1970,7 +1970,8 @@ var _activeSessionId = null, _sessionUnsub = null, _myPlayerUnsub = null, _sessi
 var _sessionData = null, _myPlayerDoc = null;
 // ── Card marketplace state (v2: permanent 10,000-card catalog, registration open before a session exists) ──
 var _market = null, _marketUnsub = null;                        // settings/cardMarket = ledger of the round that is forming / running
-var _resv = {}, _resvUnsub = null, _resvRound = null;           // cardReservations/{roundId}.reserved  (cardId -> true); listened to ONLY while the marketplace is on screen
+var _resv = {}, _resvRound = null;                              // cardReservations/{roundId}.reserved  (cardId -> true); a LOCAL CACHE refreshed by
+                                                                  // explicit one-time reads (_fetchReservations), never a live listener — see below
 var _myOrder = null, _orderUnsub = null, _orderRound = null;    // my cardOrders/{roundId}_{uid}
 var _catalogCache = {};                                         // cardId -> { cardId, numbers[25] } — the catalog is immutable, so caching is always safe
 var _advanceTimer = null, _advancing = false, _advanceTries = 0, _attachingOwn = false, _tickLocked = null, _marketChecked = false, _activateNextTry = 0;
@@ -2006,11 +2007,10 @@ function _bootstrapSessionPointer(){
 }
 function _teardownMarketListeners(){
   if(_marketUnsub){ _marketUnsub(); _marketUnsub = null; }
-  if(_resvUnsub){ _resvUnsub(); _resvUnsub = null; }
   if(_orderUnsub){ _orderUnsub(); _orderUnsub = null; }
   if(_advanceTimer){ clearTimeout(_advanceTimer); _advanceTimer = null; }
-  _market = null; _resv = {}; _resvRound = null; _myOrder = null; _orderRound = null;
-  _mp.initialized = false; _mp.selected = []; _mp.cards = [];
+  _market = null; _resv = {}; _resvRound = null; _myOrder = null; _orderRound = null; _resvWant = false;
+  cartClear(); _mp.initialized = false; _mp.cards = [];
 }
 function _onMarketSnapshot(snap){
   _market = snap.exists ? snap.data() : null;
@@ -2021,11 +2021,12 @@ function _onMarketSnapshot(snap){
     return;
   }
   if(_market.roundId !== _orderRound){
-    // a NEW round: reservations and my order belong to the round -> re-watch them, forget any half-made selection
-    if(_resvUnsub){ _resvUnsub(); _resvUnsub = null; }
-    _resv = {}; _resvRound = _market.roundId;
+    // a NEW round: reservations and my order belong to the round -> forget any half-made cart selection.
+    // _resvRound is left stale (null) rather than re-synced here — the next explicit read (marketplace
+    // becoming visible, or a page turn) is what actually refreshes _resv for the new round.
+    _resv = {}; _resvRound = null;
     _watchOrder(_market.roundId);
-    _mp.selected = []; _mp.initialized = false; _mp.cards = [];
+    cartClear(); _mp.initialized = false; _mp.cards = [];
   }
   var sid = _market.sessionId || null;
   if(sid && sid !== _activeSessionId){ _attachToSession(sid); }
@@ -2048,25 +2049,41 @@ function _watchOrder(roundId){
     _maybeSelfAttach();
   }, function(err){ console.error('[Order] listener error', err); });
 }
-// The reservation map is one document that changes on every purchase, and every open listener is billed a read
-// per change — so it is only watched while the marketplace is actually visible.
-function _syncResvListener(want){
-  if(want && _market && !_resvUnsub){
-    var rid = _market.roundId; _resvRound = rid;
-    _resvUnsub = window._db.collection('cardReservations').doc(rid).onSnapshot(function(snap){
-      if(!_market || _market.roundId !== rid) return;
-      _resv = (snap.exists && snap.data().reserved) || {};
-      _dropTakenSelections();
-      renderSessionMarketplace();
-    }, function(err){ console.error('[Reservations] listener error', err); });
-  } else if(!want && _resvUnsub){ _resvUnsub(); _resvUnsub = null; }
+// The reservation map is one shared document that changes on every purchase from ANY player. This used
+// to be a realtime listener kept open for as long as the marketplace was on screen, which meant every
+// viewer's browser was billed a read for every OTHER player's purchase too, just to display the page.
+// FOUNDATION-STAGE CHANGE: no more live listener. Availability is refreshed with an explicit ONE-TIME
+// read instead, only when it's actually needed — the marketplace becoming visible, a page turn
+// (mpLoadPage), or the shared cart checking its own candidates (cartVerifyAvailability, below). The
+// authoritative purchase transaction in buyCards() always re-reads reservations itself inside the
+// transaction regardless, so a moment of staleness here only affects the grey-out "taken" display —
+// never correctness or double-selling.
+function _fetchReservations(){
+  if(!_market) return Promise.resolve({});
+  var rid = _market.roundId;
+  return window._db.collection('cardReservations').doc(rid).get().then(function(snap){
+    var reserved = (snap.exists && snap.data().reserved) || {};
+    if(_market && _market.roundId === rid){ _resv = reserved; _resvRound = rid; }
+    return reserved;
+  }, function(err){ console.error('[Reservations] one-time read failed', err); return _resv; });
+}
+function _refreshMarketplaceAvailability(){
+  return _fetchReservations().then(function(){ _dropTakenSelections(); renderSessionMarketplace(); });
+}
+// Called from _renderSessionUI with whether the marketplace is currently visible. Refreshes availability
+// once when the marketplace transitions into view (or the round changes under it) — NOT on every
+// re-render, so a ticking countdown or an unrelated session/order update doesn't spend a read.
+var _resvWant = false;
+function _syncResvAvailability(want){
+  if(want && (!_resvWant || !_market || _resvRound !== _market.roundId)) _refreshMarketplaceAvailability();
+  _resvWant = want;
 }
 function _dropTakenSelections(){
   var mine = {}; ((_myOrder && _myOrder.cardIds) || []).forEach(function(id){ mine[id] = true; });
   var pend = {}; (_mp.pendingIds || []).forEach(function(id){ pend[id] = true; });   // my own purchase still landing
-  var gone = _mp.selected.filter(function(id){ return _resv[id] && !mine[id] && !pend[id]; });
+  var gone = _cart.ids.filter(function(id){ return _resv[id] && !mine[id] && !pend[id]; });
   if(gone.length){
-    _mp.selected = _mp.selected.filter(function(id){ return gone.indexOf(id) === -1; });
+    gone.forEach(function(id){ cartRemove(id); });
     showToast(t('mp_card_taken_toast', { ids: gone.join(', ') }));
   }
 }
@@ -2237,12 +2254,12 @@ function _renderSessionUI(){
   // via the session/player listeners no longer pays for ~15 unrelated Home DOM writes on every call.
   // _market/_sessionData/_myOrder keep updating regardless of screen; navigateTo() calls this function
   // again in full the instant Home becomes visible, so nothing goes stale.
-  if(_currentScreen !== 'home'){ _syncResvListener(false); return; }
+  if(_currentScreen !== 'home'){ _syncResvAvailability(false); return; }
   var st = _mpState();
   var noSess = $('noActiveSession'), wrap = $('sessionHeroWrap');
   if(st === 'not_ready' || st === 'loading'){
     noSess.classList.remove('hidden'); wrap.classList.add('hidden');
-    _syncResvListener(false);
+    _syncResvAvailability(false);
     _ppvClose('hero');
     return;
   }
@@ -2301,7 +2318,7 @@ function _renderSessionUI(){
   $('marketplaceWrap').classList.toggle('hidden', !showMp);
   $('registrationLockedNotice').classList.toggle('hidden', !(st === 'locked_soon' && !hasOrder));
   if(showMp){ if(!_mp.initialized) _mpInit(); else renderSessionMarketplace(); }
-  _syncResvListener(showMp && _currentScreen === 'home');
+  _syncResvAvailability(showMp && _currentScreen === 'home');
 }
 
 function _updateCountdownTicker(){
@@ -2361,12 +2378,165 @@ function _resyncAfterSuspend(){
 }
 window.addEventListener('pageshow', function(e){ if(e.persisted) _requestResync(); });
 /* ───────────────────────────── MARKETPLACE ─────────────────────────────── */
-var _mp = { initialized:false, start:CATALOG_FIRST_ID, cards:[], selected:[], loading:false, token:0, buying:false, pendingIds:[] };
+// ── Shared cart (foundation stage) ───────────────────────────────────────────────────────────
+// A cart CANDIDATE is a card the player is reviewing before purchase. It is NEVER a reservation:
+// adding/removing a candidate never touches Firestore and never blocks the card for anyone else —
+// only buyCards()'s transaction, further down, has any purchase authority. Both card-marketplace
+// entry points write into this ONE cart: today just the manual Home marketplace below; a future
+// "+ Add Card" quick random-purchase screen will be the second writer. There is only one purchase
+// engine either way — buyCards() — the cart just feeds it candidate ids.
+var _cart = {
+  ids: [],          // candidate card IDs, in selection order — this IS "my current selection" everywhere
+  cards: {},         // cardId -> loaded catalog card object ({cardId, numbers}), for the CURRENT candidates only
+  source: null,      // which entry point is populating the cart right now: 'marketplace' | 'quickbuy' | null
+  random: {},        // cardId -> true for candidates that came from RANDOM GENERATION ('quickbuy'), as opposed
+                      // to a manual marketplace pick. Lets a pre-purchase availability conflict auto-replace
+                      // only the cards nobody chose by hand — see generateCartCandidates() and
+                      // verifyAndReplaceCartCandidates() below.
+  loading: false,    // true while candidate card objects are being fetched — see cartEnsureLoaded
+  verifying: false,  // true while an explicit one-time availability check is in flight — see cartVerifyAvailability
+  purchasing: false  // true while buyCards()'s transaction is in flight (mirrors _mp.buying)
+};
+function cartHas(cardId){ return _cart.ids.indexOf(cardId) !== -1; }
+function cartAdd(cardId, source){
+  if(cartHas(cardId)) return;
+  _cart.ids.push(cardId);
+  if(source) _cart.source = source;
+  if(source === 'quickbuy') _cart.random[cardId] = true;
+  if(_catalogCache[cardId]) _cart.cards[cardId] = _catalogCache[cardId];
+}
+function cartRemove(cardId){
+  var pos = _cart.ids.indexOf(cardId);
+  if(pos !== -1) _cart.ids.splice(pos, 1);
+  delete _cart.cards[cardId];
+  delete _cart.random[cardId];
+}
+function cartClear(){ _cart.ids = []; _cart.cards = {}; _cart.source = null; _cart.random = {}; _cart.loading = false; _cart.verifying = false; }
+// Loads catalog data for any candidate that doesn't have it yet. The manual marketplace below never
+// needs this itself (a card can only be added to the cart from an already-loaded catalog page), but a
+// future entry point that adds ids directly (e.g. server-picked random cards) will.
+function cartEnsureLoaded(){
+  var missing = _cart.ids.filter(function(id){ return !_cart.cards[id]; });
+  if(!missing.length) return Promise.resolve();
+  _cart.loading = true;
+  return _fetchCatalogCards(missing).then(function(cards){
+    cards.forEach(function(c){ _cart.cards[c.cardId] = c; });
+    _cart.loading = false;
+  }, function(e){ _cart.loading = false; throw e; });
+}
+// Explicit ONE-TIME availability check for the cart's current candidates (see _fetchReservations
+// below — the marketplace no longer keeps a realtime cardReservations listener open just to display
+// itself). Returns the subset of cart ids that are already taken; does not remove them itself so each
+// caller can decide how to react (the marketplace's own _dropTakenSelections does that for its flow).
+function cartVerifyAvailability(){
+  if(!_cart.ids.length) return Promise.resolve([]);
+  _cart.verifying = true;
+  return _fetchReservations().then(function(reserved){
+    _cart.verifying = false;
+    return _cart.ids.filter(function(id){ return reserved[id]; });
+  }, function(e){ _cart.verifying = false; return []; });
+}
+
+// ── Cart candidates (foundation stage: engine for the future "+ Add Card" quick-buy screen) ───────
+// A CART CANDIDATE is a randomly-picked card id sitting in the shared cart above, exactly like a
+// manually-picked marketplace card except nobody chose it by hand. Nothing below ever reserves or
+// writes anything: candidates are selected LOCALLY from a snapshot of the same cardReservations doc
+// _fetchReservations() already reads for the manual marketplace (one explicit one-time read, no
+// listener). buyCards(), above/below, remains the only Firestore authority that can actually grant a
+// card — this is a UX convenience layered on top of it, never a substitute for it.
+
+// Pure local computation (0 Firestore accesses): every catalog id NOT in `reserved` and NOT already
+// sitting in the cart. The catalog id space is contiguous ("10000".."19999"), so this never needs a
+// query — just CATALOG_SIZE simple lookups against the two plain objects already in memory.
+function _freeCatalogIds(reserved){
+  var exclude = {}; _cart.ids.forEach(function(id){ exclude[id] = true; });
+  var out = [];
+  for(var i = 0; i < CATALOG_SIZE; i++){
+    var id = String(CATALOG_FIRST_ID + i);
+    if(!reserved[id] && !exclude[id]) out.push(id);
+  }
+  return out;
+}
+// Partial Fisher-Yates: `count` ids chosen at random, without replacement, from `pool` (mutated —
+// callers only ever pass a throwaway array fresh out of _freeCatalogIds). Returns fewer than `count`
+// if the pool is smaller; never errors, never loops.
+function _pickRandomIds(pool, count){
+  var n = pool.length, picked = [];
+  count = Math.min(Math.max(0, count), n);
+  for(var i = 0; i < count; i++){
+    var j = i + Math.floor(Math.random() * (n - i));
+    var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+    picked.push(pool[i]);
+  }
+  return picked;
+}
+// Shared by generation, pre-purchase replacement, and the buyCards() CARD_TAKEN recovery below:
+// draw up to `count` fresh random ids out of a reservation snapshot that are free and not already
+// in the cart. 0 additional Firestore accesses — `reserved` is whatever the caller already fetched.
+function _drawRandomFree(reserved, count){ return _pickRandomIds(_freeCatalogIds(reserved), count); }
+
+// STEP: choose quantity -> ONE availability read -> select random free ids locally -> load their
+// catalog data (via the existing cache-aware cartEnsureLoaded/_fetchCatalogCards) -> shared cart.
+// `qty` comes from the future "+" UI; no new maximum is enforced here (MAX_CARDS is still enforced,
+// unchanged, inside buyCards() at purchase time). Resolves to a display-ready result the next stage's
+// UI can render directly, including the honest case where fewer than `qty` free cards exist.
+function generateCartCandidates(qty){
+  qty = Math.max(0, parseInt(qty, 10) || 0);
+  var st = _mpState();
+  if(!qty || !_market || (st !== 'open_pre' && st !== 'open_session')){
+    return Promise.resolve({ added: [], got: 0, requested: qty, short: qty > 0 });
+  }
+  return _fetchReservations().then(function(reserved){
+    var picks = _drawRandomFree(reserved, qty);
+    picks.forEach(function(id){ cartAdd(id, 'quickbuy'); });
+    return cartEnsureLoaded().then(function(){
+      return { added: picks, got: picks.length, requested: qty, short: picks.length < qty };
+    });
+  });
+}
+// STEP: fresh, independent pre-purchase verification (spec: "Generate -> show cart -> user presses
+// Purchase -> FRESH availability verification -> replace conflicting candidates -> existing atomic
+// purchase transaction"). Re-reads reservations — the read from generation can be stale by the time
+// the player presses Purchase — drops any cart id that is now taken, and backfills ONLY the ones that
+// were themselves randomly generated (_cart.random) with fresh random replacements. A manually-picked
+// marketplace card that is now taken is dropped, never silently swapped, exactly like buyCards()'s
+// existing CARD_TAKEN handling for the manual flow. This is a UX step only: buyCards() below still
+// re-verifies inside its own transaction and is the only thing that can accept or reject a purchase.
+function verifyAndReplaceCartCandidates(){
+  if(!_cart.ids.length || !_market) return Promise.resolve({ replaced: [], added: [], removedManual: [], short: false });
+  return _fetchReservations().then(function(reserved){
+    var takenNow = _cart.ids.filter(function(id){ return reserved[id]; });
+    if(!takenNow.length) return { replaced: [], added: [], removedManual: [], short: false };
+    var takenRandom = takenNow.filter(function(id){ return _cart.random[id]; });
+    var takenManual = takenNow.filter(function(id){ return !_cart.random[id]; });
+    takenNow.forEach(function(id){ cartRemove(id); });
+    var replacements = _drawRandomFree(reserved, takenRandom.length);
+    replacements.forEach(function(id){ cartAdd(id, 'quickbuy'); });
+    return cartEnsureLoaded().then(function(){
+      return { replaced: takenRandom, added: replacements, removedManual: takenManual, short: replacements.length < takenRandom.length };
+    });
+  });
+}
+// Best-effort recovery used ONLY from buyCards()'s CARD_TAKEN rejection below: `count` random-origin
+// slots were just freed from the cart because the atomic transaction itself found them already taken.
+// Re-reads reservations fresh (the transaction's rejection reason is not reused as availability data)
+// and tries to backfill that many replacements. Never involves a manually-picked card — the caller
+// only passes the count of RANDOM ids that were removed.
+function _topUpRandomCart(count){
+  if(!count || !_market) return Promise.resolve({ added: [], short: count > 0 });
+  return _fetchReservations().then(function(reserved){
+    var picks = _drawRandomFree(reserved, count);
+    picks.forEach(function(id){ cartAdd(id, 'quickbuy'); });
+    return cartEnsureLoaded().then(function(){ return { added: picks, short: picks.length < count }; });
+  }, function(){ return { added: [], short: true }; });
+}
+
+var _mp = { initialized:false, start:CATALOG_FIRST_ID, cards:[], loading:false, token:0, buying:false, pendingIds:[] };
 var _mpJoinInProgress = false;   // a purchase transaction is running
 var _leaveInProgress = false;    // a cancel transaction is running
 
 function _mpOwned(){ return _myOrder ? (_myOrder.ticketCount || 0) : 0; }
-function _mpInit(){ _mp.initialized = true; _mp.selected = []; mpRandomPage(true); }
+function _mpInit(){ _mp.initialized = true; cartClear(); mpRandomPage(true); }
 
 // One range read of the IMMUTABLE catalog (document ids are 5-digit strings, so lexical order == numeric order).
 // Cached for the life of the page. Only MP_PAGE_SIZE cards are ever loaded at a time.
@@ -2394,6 +2564,7 @@ function mpLoadPage(startId){
   _mp.start = startId; _mp.loading = true;
   var token = ++_mp.token;
   renderSessionMarketplace();
+  _refreshMarketplaceAvailability();   // explicit one-time read for the page being requested — no live listener
   _cardRangeFetch(startId).then(function(cards){
     if(token !== _mp.token) return;
     _mp.cards = cards; _mp.loading = false; renderSessionMarketplace();
@@ -2424,11 +2595,10 @@ function mpGoto(){
 }
 function toggleSessionCard(cardId){
   playClick();
-  var pos = _mp.selected.indexOf(cardId);
-  if(pos !== -1){ _mp.selected.splice(pos, 1); renderSessionMarketplace(); return; }
+  if(cartHas(cardId)){ cartRemove(cardId); renderSessionMarketplace(); return; }
   if(_resv[cardId]){ showToast(t('mp_card_taken_toast', { ids: cardId })); return; }
-  if(_mp.selected.length + _mpOwned() >= MAX_CARDS){ showToast(t('max_cards_toast', { n: MAX_CARDS })); return; }
-  _mp.selected.push(cardId);
+  if(_cart.ids.length + _mpOwned() >= MAX_CARDS){ showToast(t('max_cards_toast', { n: MAX_CARDS })); return; }
+  cartAdd(cardId, 'marketplace');
   renderSessionMarketplace();
 }
 function renderSessionMarketplace(){
@@ -2440,7 +2610,7 @@ function renderSessionMarketplace(){
     grid.innerHTML = _mp.cards.map(function(c){
       var isMine = !!mine[c.cardId];
       var blocked = isMine || !!_resv[c.cardId];
-      var selected = _mp.selected.indexOf(c.cardId) !== -1;
+      var selected = cartHas(c.cardId);
       var cells = c.numbers.map(function(n, ci){ return '<span class="' + (ci === 12 ? 'free' : '') + '">' + (ci === 12 ? '\u2605' : n) + '</span>'; }).join('');
       return '<div class="mini-card' + (selected ? ' selected' : '') + (blocked ? ' taken' : '') + '"' + (blocked ? '' : ' onclick="toggleSessionCard(\'' + c.cardId + '\')"') + '>' +
         (selected ? '<div class="check">\u2713</div>' : '') +
@@ -2451,10 +2621,10 @@ function renderSessionMarketplace(){
   }
   var last = Math.min(_mp.start + MP_PAGE_SIZE - 1, CATALOG_FIRST_ID + CATALOG_SIZE - 1);
   $('mpPageLine').textContent = t('mp_page_line', { a: _mp.start, b: last });
-  $('mpSelectedIds').innerHTML = _mp.selected.map(function(id){
+  $('mpSelectedIds').innerHTML = _cart.ids.map(function(id){
     return '<button class="pill status-active mp-chip" onclick="toggleSessionCard(\'' + id + '\')">' + id + ' \u2715</button>';
   }).join('');
-  var n = _mp.selected.length;
+  var n = _cart.ids.length;
   $('mpSelectedCount').textContent = n;
   $('mpTotalCost').textContent = fmtETB(n * CARD_PRICE) + ' ' + t('currency_unit');
   var btn = $('mpJoinBtn');
@@ -2494,7 +2664,7 @@ function _mpErrorMessage(err, action){
 // Before any session exists the counters live on settings/cardMarket and the order stays 'pending_next_session'.
 function buyCards(){
   if(_mpJoinInProgress) return;
-  var picks = _mp.selected.slice();
+  var picks = _cart.ids.slice();
   if(!picks.length || !_market) return;
   var st = _mpState();
   if(st !== 'open_pre' && st !== 'open_session'){ showToast(t('mp_closed_toast')); return; }
@@ -2504,7 +2674,7 @@ function buyCards(){
   if(picks.some(function(id){ return !_catalogCache[id]; })){ showToast(t('mp_loading')); return; }
   var uid = window._auth.currentUser.uid;
   var phone = (currentUser.phone || '');
-  _mpJoinInProgress = true; _mp.buying = true; _mp.pendingIds = picks.slice();
+  _mpJoinInProgress = true; _mp.buying = true; _cart.purchasing = true; _mp.pendingIds = picks.slice();
   var btn = $('mpJoinBtn'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + t('processing');
 
   var db = window._db, FV = firebase.firestore.FieldValue, FP = firebase.firestore.FieldPath;
@@ -2572,16 +2742,27 @@ function buyCards(){
       });
     });
   }).then(function(){
-    _mpJoinInProgress = false; _mp.buying = false; _mp.selected = [];
+    _mpJoinInProgress = false; _mp.buying = false; _cart.purchasing = false; cartClear();
     setTimeout(function(){ _mp.pendingIds = []; }, 4000);
     showToast(t('mp_bought_toast', { n: picks.length }));
     renderSessionMarketplace(); _renderSessionUI();
   }).catch(function(err){
-    _mpJoinInProgress = false; _mp.buying = false;
+    _mpJoinInProgress = false; _mp.buying = false; _cart.purchasing = false;
     setTimeout(function(){ _mp.pendingIds = []; }, 4000);
     if(err && err.message === 'CARD_TAKEN' && err.takenIds){
-      _mp.selected = _mp.selected.filter(function(id){ return err.takenIds.indexOf(id) === -1; });
-      showToast(t('mp_card_taken_toast', { ids: err.takenIds.join(', ') }));
+      var takenIds = err.takenIds.slice();
+      var takenRandomCount = takenIds.filter(function(id){ return _cart.random[id]; }).length;
+      takenIds.forEach(function(id){ cartRemove(id); });
+      showToast(t('mp_card_taken_toast', { ids: takenIds.join(', ') }));
+      // Random-origin candidates only: best-effort backfill so a quickbuy cart isn't left smaller than
+      // requested just because the atomic transaction beat us to one of the random picks. Manually-picked
+      // cards are never touched here (their removal above is the whole of the existing behavior).
+      if(takenRandomCount){
+        _topUpRandomCart(takenRandomCount).then(function(r){
+          if(r.short) console.warn('[Quickbuy] fewer free cards remain than needed to top up the cart');
+          renderSessionMarketplace();
+        });
+      }
     } else {
       showToast(_mpErrorMessage(err, 'buy cards'));
       console.error('[Buy] failed - full error object (check .code / .message):', err);
