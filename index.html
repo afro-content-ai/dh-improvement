@@ -364,6 +364,7 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
 .blocked-more-btn:active{ transform:scale(.95); }
 
 /* ---- marketplace ---- */
+.mp-toolbar{display:flex; align-items:center; justify-content:space-between; margin:16px 0 10px;}
 .mp-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:9px;}
 @media (min-width:400px){.mp-grid{grid-template-columns:repeat(4,1fr);}}
 .mini-card{
@@ -391,48 +392,15 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
 @keyframes checkPop{0%{transform:scale(0) rotate(-20deg);}100%{transform:scale(1) rotate(0);}}
 .mini-card .reroll{margin-top:2px; border:none; background:var(--card-bg-2); color:var(--text-muted); border-radius:6px; font-size:10.5px; padding:3px; font-weight:700;}
 @media (prefers-reduced-motion: reduce){ .mini-card, .mini-card .check{transition:none; animation:none;} }
+.mp-summary{position:sticky; bottom:calc(64px + var(--safe-bottom)); margin-top:12px; z-index:10;}
 .mini-card .card-id{font-size:9.5px; font-weight:800; text-align:center; color:var(--text-muted); letter-spacing:.02em;}
 .mini-card.taken{opacity:.42; filter:grayscale(.65); pointer-events:none;}
 .mini-card .taken-tag{position:absolute; top:3px; left:3px; z-index:2; background:var(--card-bg-2); color:var(--text-muted); font-size:9px; font-weight:800; border-radius:6px; padding:1px 5px;}
 .mp-chips{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0;}
-
-/* ---- marketplace: compact sticky toolbar ---- */
-.mp-sticky-toolbar{
-  position:sticky; top:var(--topbar-h, 70px); z-index:20; background:var(--bg-main);
-  padding:10px 0 8px; margin:0 0 10px; border-bottom:1px solid var(--border-color);
-}
-.mp-toolbar-row1{display:flex; align-items:center; justify-content:space-between; gap:8px;}
-.mp-mini-status{font-size:12.5px; font-weight:700; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;}
-.mp-mini-status.locked{color:var(--warning);}
-.mp-toolbar-actions{display:flex; align-items:center; gap:6px; flex-shrink:0;}
-.mp-cart-btn{
-  min-width:var(--tap-min); height:var(--tap-min); padding:0 14px; border-radius:var(--radius-pill);
-  border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-main);
-  font-weight:800; font-size:13.5px; display:flex; align-items:center; justify-content:center; gap:4px; flex-shrink:0;
-}
-.mp-toolbar-search{display:flex; gap:8px; margin-top:8px;}
-.mp-toolbar-search input{flex:1; min-width:0;}
-.mp-toolbar-nav{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; font-size:12px;}
-
-/* ---- add card screen ---- */
-.ac-presets{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px;}
-.ac-preset-btn.active{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); color:var(--gold);}
-.qty-stepper{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
-.qty-stepper input{text-align:center; flex:1;}
-.qty-stepper .icon-btn{flex-shrink:0;}
-
-/* ---- cart modal ---- */
-.cart-row{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-color);}
-.cart-row:last-child{border-bottom:none;}
-.cart-row-info{flex:1; min-width:0;}
-.cart-row-id{font-weight:700; font-size:14px;}
-.cart-row-price{color:var(--text-muted); font-size:12.5px; flex-shrink:0;}
-.cart-row-remove{
-  width:30px; height:30px; border-radius:50%; border:1px solid var(--border-color); background:var(--card-bg-2);
-  color:var(--danger); font-size:13px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
-}
-.cart-panel-footer{position:sticky; bottom:0; background:var(--card-bg); padding-top:10px; margin-top:4px;}
-.cart-summary-row{display:flex; align-items:center; justify-content:space-between; margin:0 0 12px; font-size:14px; font-weight:700;}
+.mp-chip{border:none; cursor:pointer; font-family:inherit;}
+.mp-nav{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0 8px; font-size:12px;}
+.mp-goto{display:flex; gap:8px; margin-bottom:10px;}
+.mp-goto input{flex:1; min-width:0;}
 
 /* ---- live game ---- */
 /* Sticky calling header — pinned just below .topbar (whose real rendered
@@ -615,6 +583,91 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
 
 .update-toast{position:fixed; left:14px; right:14px; bottom:calc(74px + var(--safe-bottom)); z-index:210; background:var(--card-bg); border:1px solid var(--accent); border-radius:var(--radius-md); padding:12px 14px; display:flex; align-items:center; gap:10px; box-shadow:var(--shadow-card);}
 .conn-banner{background:rgba(239,68,68,.14); color:var(--danger); text-align:center; font-size:12.5px; font-weight:700; padding:7px; position:sticky; top:0; z-index:45;}
+
+/* =========================================================================
+   MARKETPLACE UI — sticky toolbar · ＋ Add Card · shared cart
+   Tokens only (both themes). No new animations; reduced-motion safe.
+   ========================================================================= */
+/* Toasts must stay readable above the cart sheet (250) yet under the win/end overlays (300). */
+.toast-stack{z-index:260;}
+
+/* ---- bottom nav: ＋ tab (6 slots when Admin is shown, so labels may never wrap the row) ---- */
+.bottom-nav button{min-width:0;}
+.bottom-nav button > span[data-i18n]{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.nav-add-wrap{position:relative; display:inline-flex;}
+.nav-add-ic{width:32px; height:26px; border-radius:var(--radius-pill); display:flex; align-items:center; justify-content:center; font-size:20px; line-height:1; font-weight:700; border:1.5px solid var(--accent); color:var(--accent);}
+.bottom-nav button.active .nav-add-ic{background:linear-gradient(135deg,var(--accent-hover),var(--accent)); color:#04141a; box-shadow:var(--glow-accent);}
+.nav-cart-badge{position:absolute; top:-7px; right:-9px; min-width:16px; height:16px; padding:0 4px; border-radius:var(--radius-pill); background:var(--accent-2); color:#fff; font-size:10px; font-weight:800; line-height:1; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px var(--bg-elevated);}
+
+/* ---- Home marketplace: compact sticky toolbar ---- */
+.mp-sticky{position:sticky; top:var(--topbar-h,70px); z-index:30; background:var(--bg-main); margin:0 -14px 8px; padding:8px 14px; border-bottom:1px solid var(--border-color); box-shadow:0 8px 14px -10px rgba(0,0,0,.55);}
+.mp-bar{display:flex; align-items:center; gap:8px;}
+.mp-clock{flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:6px; min-height:var(--tap-min); padding:0 12px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:var(--radius-pill); font-variant-numeric:tabular-nums;}
+.mp-clock b{font-family:var(--font-display); font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.mp-clock.is-text .mp-clock-ic{display:none;}
+.mp-clock.is-text{padding:0 10px;}
+.mp-clock.is-text b{font-size:12px;}
+.mp-tool{flex:0 0 auto; position:relative; width:var(--tap-min); height:var(--tap-min); padding:0; border-radius:50%; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-main); font-size:18px; display:flex; align-items:center; justify-content:center;}
+.mp-tool:active{transform:scale(.94);}
+.mp-tool.on{border-color:var(--accent); color:var(--accent); box-shadow:var(--glow-accent);}
+.mp-cart-btn.has-items{border-color:var(--gold);}
+.mp-cart-count{position:absolute; top:-5px; right:-5px; min-width:19px; height:19px; padding:0 5px; border-radius:var(--radius-pill); background:var(--accent-2); color:#fff; font-size:11px; font-weight:800; line-height:1; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px var(--bg-main);}
+.mp-sticky .mp-goto{margin:8px 0 0;}
+.mp-goto .btn{min-height:var(--tap-min);}
+.mp-nav{margin:8px 0;}
+.mp-nav .btn{min-height:40px; min-width:88px;}
+.mp-nav .muted{flex:1; text-align:center;}
+.mp-nav-bottom{margin:12px 0 4px;}
+
+/* ---- ＋ Add Card screen ---- */
+.addc-top{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px;}
+.addc-top h2{margin:0; font-size:22px;}
+.addc-clock{white-space:nowrap; max-width:60%; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums;}
+.addc-owned{font-size:12.5px; margin-bottom:12px;}
+.addc-h{font-family:var(--font-display); font-weight:700; font-size:16px;}
+.addc-desc{font-size:13px; margin:4px 0 12px;}
+.addc-hint{font-size:12.5px; text-align:center; margin-bottom:8px; color:var(--warning);}
+.addc-cart{scroll-margin-top:calc(var(--topbar-h,70px) + 8px); scroll-margin-bottom:calc(80px + var(--safe-bottom));}
+.addc-browse{margin-top:12px; height:auto; padding-top:10px; padding-bottom:10px; line-height:1.3; text-wrap:balance;}
+.addc-cart-head{margin-bottom:4px;}
+.addc-grid-hint{font-size:12.5px; text-align:center; margin:14px 0 8px;}
+#addCardsGrid{padding-top:6px;}
+#addCardsGrid .mini-card{cursor:pointer;}
+.qty-presets{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px;}
+.qty-chip{min-height:var(--tap-min); border-radius:var(--radius-md); border:1.5px solid var(--border-color); background:var(--card-bg-2); color:var(--text-main); font-family:var(--font-display); font-weight:700; font-size:18px; padding:0;}
+.qty-chip.on{border-color:var(--accent); color:var(--accent); box-shadow:var(--glow-accent);}
+.qty-chip:disabled{opacity:.4;}
+.qty-stepper{display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:14px;}
+.qty-stepper button{width:48px; height:48px; padding:0; border-radius:50%; border:1px solid var(--border-color); background:var(--card-bg-2); color:var(--text-main); font-size:24px; font-weight:700; line-height:1;}
+.qty-stepper button:disabled{opacity:.4;}
+.qty-stepper input[type=number]{width:88px; text-align:center; font-family:var(--font-display); font-size:22px; font-weight:700; padding:8px; -moz-appearance:textfield;}
+.qty-stepper input[type=number]::-webkit-inner-spin-button,.qty-stepper input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none; margin:0;}
+
+/* ---- shared cart panel (sheet + ＋ screen render the SAME markup from the SAME _cart) ---- */
+.modal-sheet .panel.cart-panel{display:flex; flex-direction:column; overflow:hidden; padding-bottom:0;}
+.cart-scroll{flex:1 1 auto; min-height:0; overflow-y:auto; margin:0 -8px;}
+.cart-foot{flex:0 0 auto; padding:12px 0 calc(14px + var(--safe-bottom)); border-top:1px solid var(--border-color); background:var(--card-bg);}
+.cart-foot:empty{display:none;}
+.cart-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px 9px; padding:10px 8px 6px;}
+@media (min-width:400px){.cart-grid{grid-template-columns:repeat(4,1fr);}}
+.cart-item{padding-top:8px;}
+.cart-item.is-loading .mini-grid span{opacity:.35;}
+.cart-x{position:absolute; top:-8px; right:-8px; width:28px; height:28px; padding:0; border:none; border-radius:50%; background:var(--danger); color:#fff; font-size:13px; font-weight:800; line-height:1; display:flex; align-items:center; justify-content:center; z-index:3; box-shadow:0 0 0 2px var(--card-bg);}
+.cart-x::after{content:''; position:absolute; inset:-8px;}
+.cart-rnd{position:absolute; top:3px; left:4px; font-size:11px; line-height:1; z-index:2;}
+.cart-price{font-size:9.5px; font-weight:700; text-align:center; color:var(--text-muted);}
+.cart-sum{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:10px;}
+.cart-sum b{font-family:var(--font-display); font-size:20px; color:var(--gold);}
+.cart-note{border-radius:var(--radius-md); padding:10px 12px; margin-bottom:10px; font-size:13px; font-weight:600; background:rgba(245,158,11,.14); color:var(--warning);}
+.cart-note-danger{background:rgba(239,68,68,.12); color:var(--danger);}
+.cart-actions{display:flex; gap:10px;}
+.cart-actions .btn-buy{flex:1; min-width:0;}
+.cart-actions .cart-clear{flex:0 0 auto; width:auto; padding:0 16px;}
+.cart-empty{text-align:center; padding:26px 12px; color:var(--text-muted);}
+.cart-empty .ic{font-size:32px; margin-bottom:6px;}
+.addc-cart .cart-scroll,.addc-cart .cart-foot{margin:0;}
+.addc-cart .cart-foot{padding:12px 0 0; margin-top:8px;}
+@media (max-width:359px){ .mp-bar{gap:6px;} .mp-clock{padding:0 10px;} .addc-top h2{font-size:20px;} }
 </style>
 
 </head>
@@ -733,26 +786,35 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
 
         <!-- Marketplace (not yet joined) -->
         <div id="marketplaceWrap" class="hidden">
-          <div class="mp-sticky-toolbar" id="mpStickyToolbar">
-            <div class="mp-toolbar-row1">
-              <span class="mp-mini-status" id="mpMiniStatus"></span>
-              <div class="mp-toolbar-actions">
-                <button type="button" class="icon-btn" onclick="mpRandomPage()" aria-label="Shuffle">🔀</button>
-                <button type="button" class="icon-btn" onclick="_mpToggleSearch()" aria-label="Search">🔍</button>
-                <button type="button" class="mp-cart-btn" id="mpCartBtn" onclick="openCart()" aria-label="Cart">🛒 0</button>
-              </div>
+          <!-- Compact sticky toolbar: countdown/status · search · shuffle · cart. The card grid below is the only scrolling content. -->
+          <div class="mp-sticky" id="mpSticky">
+            <div class="mp-bar">
+              <div class="mp-clock"><span class="mp-clock-ic" aria-hidden="true">⏱</span><b class="js-cd-mirror" id="mpToolbarCountdown">--:--</b></div>
+              <button type="button" class="mp-tool" id="mpSearchToggle" onclick="mpToggleSearch()" aria-expanded="false" aria-controls="mpGotoRow" aria-label="Search card number" data-i18n-aria="search_aria">🔍</button>
+              <button type="button" class="mp-tool" onclick="mpRandomPage()" aria-label="Shuffle cards" data-i18n-aria="shuffle_aria">🔀</button>
+              <button type="button" class="mp-tool mp-cart-btn" id="mpCartBtn" onclick="openCartSheet()" aria-label="Cart">🛒<span class="mp-cart-count hidden" id="mpCartCount">0</span></button>
             </div>
-            <div class="mp-toolbar-search hidden" id="mpToolbarSearch">
-              <input id="mpGotoInput" type="number" inputmode="numeric" min="10000" max="19999" data-i18n-ph="mp_goto_ph" placeholder="Card no.">
-              <button type="button" class="btn btn-secondary btn-sm" onclick="mpGoto()" data-i18n="mp_go">Go</button>
-            </div>
-            <div class="mp-toolbar-nav">
-              <button type="button" class="btn btn-ghost btn-sm" onclick="mpPrev()" data-i18n="mp_prev">&lsaquo; Prev</button>
-              <span class="muted" id="mpPageLine"></span>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="mpNext()" data-i18n="mp_next">Next &rsaquo;</button>
+            <div class="mp-goto hidden" id="mpGotoRow">
+              <input id="mpGotoInput" type="number" inputmode="numeric" min="10000" max="19999" data-i18n-ph="mp_goto_ph" placeholder="Card no." onkeydown="if(event.key==='Enter'){ mpGotoSubmit(); }">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="mpGotoSubmit()" data-i18n="mp_go">Go</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="mpToggleSearch(false)" aria-label="Close search" data-i18n-aria="search_close_aria">✕</button>
             </div>
           </div>
+          <div class="mp-nav">
+            <button class="btn btn-ghost btn-sm" onclick="mpPrev()" data-i18n="mp_prev">&lsaquo; Prev</button>
+            <span class="muted" id="mpPageLine"></span>
+            <button class="btn btn-ghost btn-sm" onclick="mpNext()" data-i18n="mp_next">Next &rsaquo;</button>
+          </div>
           <div id="mpGrid" class="mp-grid"></div>
+          <div class="mp-nav mp-nav-bottom">
+            <button class="btn btn-ghost btn-sm" onclick="mpPrev()" data-i18n="mp_prev">&lsaquo; Prev</button>
+            <span class="muted" id="mpPageLineB"></span>
+            <button class="btn btn-ghost btn-sm" onclick="mpNext()" data-i18n="mp_next">Next &rsaquo;</button>
+          </div>
+          <!-- Cart shortcut: shown only while the shared cart has something in it. Purchase itself lives in the cart panel. -->
+          <div class="mp-summary hidden" id="mpCartCtaWrap">
+            <button type="button" class="btn btn-primary" id="mpCartCta" onclick="openCartSheet()">🛒</button>
+          </div>
         </div>
 
         <div id="registrationLockedNotice" class="card hidden" style="margin-top:14px; text-align:center;">
@@ -802,6 +864,49 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
 
       <div class="bingo-btn-wrap">
         <button class="bingo-btn" id="bingoBtn" onclick="claimBingoAction()">BINGO!</button>
+      </div>
+    </section>
+
+    <!-- ---------------- ADD CARD SCREEN (＋ tab) ---------------- -->
+    <section id="screenAddCard" class="screen">
+      <div class="addc-top">
+        <h2 data-i18n="add_card_title">Add Cards</h2>
+        <span class="pill status-waiting addc-clock"><span aria-hidden="true">⏱</span> <b class="js-cd-mirror" id="addCardClock">--:--</b></span>
+      </div>
+      <div id="addCardOwned" class="muted addc-owned"></div>
+
+      <div id="addCardClosed" class="card hidden" style="text-align:center;">
+        <div style="font-size:30px;" aria-hidden="true">🔒</div>
+        <div class="muted" id="addCardClosedMsg" style="margin-top:6px;"></div>
+      </div>
+
+      <div id="addCardBody">
+        <div class="card">
+          <div class="addc-h" data-i18n="quick_add_title">Quick Add Randoms</div>
+          <p class="muted addc-desc" data-i18n="quick_add_desc">Choose how many and we pick free random cards for you. Nothing is held until you purchase.</p>
+          <label class="field-label" for="addQty" data-i18n="qty_label">Quantity</label>
+          <div class="qty-presets" id="qtyPresets"></div>
+          <div class="qty-stepper">
+            <button type="button" id="addQtyMinus" onclick="addQtyStep(-1)" aria-label="−">−</button>
+            <input id="addQty" type="number" inputmode="numeric" min="1" oninput="addQtyInput()" onchange="addQtyCommit()" onblur="addQtyCommit()" aria-label="Quantity" data-i18n-aria="qty_label">
+            <button type="button" id="addQtyPlus" onclick="addQtyStep(1)" aria-label="+">＋</button>
+          </div>
+          <div id="addCardHint" class="muted addc-hint hidden"></div>
+          <button type="button" class="btn btn-primary" id="addToCartBtn" onclick="quickAddRandoms()" data-i18n="add_to_cart_btn">Add to Cart</button>
+        </div>
+        <div class="card addc-cart" id="addCartCard">
+          <div class="row between addc-cart-head">
+            <div class="addc-h" data-i18n="cart_title">Your Cart</div>
+            <button type="button" class="btn btn-ghost btn-sm" id="addViewCartBtn" onclick="openCartSheet()" data-i18n="cart_view_short">View cart</button>
+          </div>
+          <div id="addCartInline"></div>
+        </div>
+        <!-- The cards themselves — same look as the Home marketplace grid (selected state), tap a card to remove it -->
+        <div id="addCardsGridWrap" class="hidden">
+          <div class="muted addc-grid-hint" data-i18n="cart_tap_remove">Tap a card to remove it from your cart.</div>
+          <div id="addCardsGrid" class="mp-grid"></div>
+        </div>
+        <button type="button" class="btn btn-ghost addc-browse" onclick="navigateTo('home')" data-i18n="add_browse_link">Or browse and pick cards yourself ›</button>
       </div>
     </section>
 
@@ -869,43 +974,12 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
       <div id="adminTabContent"></div>
     </section>
 
-    <!-- ---------------- ADD CARD SCREEN ---------------- -->
-    <section id="screenAddcard" class="screen">
-      <div id="addCardClosedNotice" class="empty-state hidden">
-        <div class="ic">🔒</div>
-        <div><b id="addCardClosedMsg"></b></div>
-      </div>
-
-      <div id="addCardBody" class="hidden">
-        <div class="section-title" data-i18n="add_card_title">Add Cards</div>
-        <div class="card">
-          <div class="row between" style="margin-bottom:10px;">
-            <b data-i18n="quick_add_randoms_title">Quick Add Randoms</b>
-            <span class="muted" style="font-size:12px;" id="addCardRemainingLine"></span>
-          </div>
-          <div class="ac-presets" id="addCardPresets"></div>
-          <label class="field-label" data-i18n="qty_label">Quantity</label>
-          <div class="qty-stepper">
-            <button type="button" class="icon-btn" onclick="_addCardQtyStep(-1)" aria-label="Decrease">−</button>
-            <input type="number" id="addCardQtyInput" inputmode="numeric" value="2" min="1" oninput="_addCardQtySync()">
-            <button type="button" class="icon-btn" onclick="_addCardQtyStep(1)" aria-label="Increase">+</button>
-          </div>
-          <button class="btn btn-primary" id="addCardAddBtn" onclick="addCardQuickAdd()" data-i18n="add_to_cart_btn">Add to Cart</button>
-        </div>
-
-        <div class="card" style="margin-top:12px;">
-          <div class="row between"><b data-i18n="cart_title">Your Cart</b><span class="muted" id="addCardCartLine">0</span></div>
-          <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="openCart()" data-i18n="view_cart_btn">View Cart</button>
-        </div>
-      </div>
-    </section>
-
   </main>
 
   <div class="bottom-nav" id="bottomNav">
     <button id="navHome" class="active" onclick="navigateTo('home')"><span class="ic">🏠</span><span data-i18n="nav_home">Home</span></button>
     <button id="navGame" onclick="navigateTo('game')"><span class="ic">🎮</span><span data-i18n="nav_play">Play</span></button>
-    <button id="navAddcard" onclick="navigateTo('addcard')"><span class="ic">➕</span><span data-i18n="nav_add_card">Add</span><span class="badge hidden" id="navAddCardBadge">0</span></button>
+    <button id="navAddCard" class="nav-add" onclick="navigateTo('addCard')"><span class="nav-add-wrap"><span class="ic nav-add-ic" aria-hidden="true">＋</span><span class="nav-cart-badge hidden" id="navAddBadge">0</span></span><span data-i18n="nav_add">Add Card</span></button>
     <button id="navWallet" onclick="navigateTo('wallet')"><span class="ic">💰</span><span data-i18n="nav_wallet">Wallet</span></button>
     <button id="navProfile" onclick="navigateTo('profile')"><span class="ic">👤</span><span data-i18n="nav_profile">Profile</span></button>
     <button id="navAdmin" onclick="navigateTo('admin')" class="hidden"><span class="ic">🛠️</span><span data-i18n="nav_admin">Admin</span></button>
@@ -918,18 +992,6 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
   <div class="panel">
     <div class="panel-head"><h3 data-i18n="language_label">ቋንቋ</h3><button class="icon-btn" aria-label="Close" onclick="closeSheet('langSheet')">✕</button></div>
     <div id="langOptionList" class="stack"></div>
-  </div>
-</div>
-
-<!-- ============================== CART MODAL ============================== -->
-<div id="cartModal" class="modal-sheet hidden">
-  <div class="panel">
-    <div class="panel-head"><h3 data-i18n="cart_title">Your Cart</h3><button class="icon-btn" aria-label="Close" onclick="closeCart()">✕</button></div>
-    <div id="cartList" class="stack"></div>
-    <div class="cart-panel-footer">
-      <div class="cart-summary-row" id="cartSummaryRow"></div>
-      <button class="btn btn-primary" id="cartPurchaseBtn" onclick="cartPurchaseAction()" disabled data-i18n="buy_cards_btn">Select Cards to Join</button>
-    </div>
   </div>
 </div>
 
@@ -978,6 +1040,15 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
     </div>
     <div class="field"><label class="field-label" data-i18n="message_label">Message</label><textarea id="supportMessage" maxlength="500"></textarea></div>
     <button class="btn btn-primary" onclick="submitSupportTicket()" data-i18n="send_btn">Send</button>
+  </div>
+</div>
+
+<!-- ============================== CART SHEET (shared cart — same cart the ＋ screen shows) ============================== -->
+<div id="cartSheet" class="modal-sheet hidden" onclick="if(event.target===this) closeCartSheet()">
+  <div class="panel cart-panel" role="dialog" aria-modal="true" aria-labelledby="cartSheetTitle">
+    <div class="panel-head"><h3 id="cartSheetTitle" data-i18n="cart_title">Your Cart</h3><button class="icon-btn" aria-label="Close" onclick="closeCartSheet()">✕</button></div>
+    <div id="cartSheetBody" class="cart-scroll"></div>
+    <div id="cartSheetFoot" class="cart-foot"></div>
   </div>
 </div>
 
@@ -1193,15 +1264,35 @@ ti:{
   leave_processing:'ይሰርሕ ኣሎ…', leave_success_toast:'ካብ ክፍለ-ግዜ ወፂእካ — ገንዘብካ ተመሊሱልካ።',
   err_leave_session_active:'ንምግዳፍ ግዜ ኣምሊጡ — ጨዋታ ተጀሚሩ ኣሎ።', err_not_registered:'ኣይተመዝገብካን ኣለኻ።',
   err_house_not_ready:'ስርዓት ገና ይጅምር ኣሎ — በጃኹም ድሕሪ ቅሩብ ግዜ ደጊምኩም ፈትኑ።',
-  /* add card / shared cart */
-  nav_add_card:'ወስኽ', add_card_title:'ካርቴላ ወስኽ', quick_add_randoms_title:'ቀልጢፍካ ብዘይ ምርጫ ወስኽ',
-  add_to_cart_btn:'ናብ ጋሪ ወስኽ', ac_remaining_line:'ኣብዚ ዙር {n} ተወሳኺ ትኽእል',
-  ac_cart_line:'{n} ኣብ ጋሪ · {amt} ብር', ac_added_toast:'{n} ካርቴላ ናብ ጋርኻ ተወሲኹ',
-  cart_title:'ጋርኻ', empty_cart_msg:'ጋርኻ ጥራይ እዩ', cart_count_line:'{n} ካርቴላ',
-  view_cart_btn:'ጋሪ ርአ', qty_label:'ብዝሒ', remove_label:'ኣወግድ', total_label:'ድምር', purchase_btn:'ግዛእ',
-  availability_changed_toast:'ገለ ካርቴላታት ተቐይሮም — በጃኹም ጋርኹም ደጊምኩም ርኣዩ።',
-  replacing_card_toast:'{n} ዘይርከቡ ካርቴላታት ብሓደስቲ ይትካእ ኣለው…',
-  menu_label:'ዝርዝር', theme_label:'ገጽታ', language_label:'ቋንቋ'
+  menu_label:'ዝርዝር', theme_label:'ገጽታ', language_label:'ቋንቋ',
+  /* marketplace UI: sticky toolbar / + Add Card / shared cart */
+  nav_add:'ወስኽ',
+  add_card_title:'ካርቴላ ወስኽ',
+  quick_add_title:'ፍጡን ዘፈቀደ ምርጫ',
+  quick_add_desc:'ክንደይ ከም እትደሊ ምረጽ — ነጻ ካርቴላታት ብዘፈቀደ ኣነምርጸልካ። ክሳብ እትገዝእ ዝተሓዘ ነገር የለን።',
+  qty_label:'ብዝሒ',
+  add_to_cart_btn:'ናብ ጋሪ ወስኽ',
+  add_generating:'ካርቴላታት ይምርጹ ኣለዉ…',
+  add_short_toast:'{n} ነጻ ካርቴላ ጥራይ ተረኺቡ።',
+  add_none_toast:'ሕጂ ነጻ ካርቴላ የለን።',
+  add_owned_line:'ኣብዚ ዙር ዘለዉኻ ካርቴላታት: {n} / {max}',
+  add_browse_link:'ወይ ባዕልኻ ርኣዮም ምረጽ ›',
+  cart_title:'ጋሪኻ',
+  cart_aria:'ጋሪ',
+  cart_empty:'ጋሪኻ ባዶ እዩ።',
+  cart_total:'ጠቕላላ',
+  cart_remove:'ኣወግድ',
+  cart_clear:'ኣጽሪ',
+  cart_purchase_btn:'ግዛእ — {amt} ብር',
+  cart_checking:'ምህላው ይርጋገጽ ኣሎ…',
+  cart_view_btn:'ጋሪ ርአ ({n}) — {amt} ብር',
+  cart_avail_changed:'ምህላው ተቐይሩ',
+  cart_replaced_notice:'{n} ዘፈቀደ ካርቴላ ተወሲዱ — ብሓድሽ ተተኪኡ። ጋሪኻ ርኣዮ ድሕሪኡ ግዛእ።',
+  cart_random_tag:'ዘፈቀደ ምርጫ',
+  search_aria:'ቁጽሪ ካርቴላ ድለ',
+  shuffle_aria:'ካርቴላታት ቀይር',
+  search_close_aria:'ድለያ ዕጸው',
+  cart_tap_remove:'ኣብ ጋሪ ዘለዉ ካርቴላታት፡ ንምውጻእ ንካዮም።', cart_view_short:'ጋሪ ርአ'
 },
 am:{
   auth_tagline:'ቀጥታ ዓለም አቀፍ የብዙ ተጫዋቾች ቢንጎ', pwa_install_btn:'ያውርዱ 📥',
@@ -1264,15 +1355,35 @@ am:{
   leave_processing:'በሂደት ላይ…', leave_success_toast:'ከክፍለ ጊዜው ወጥተዋል — ገንዘብዎ ተመላሽ ተደርጓል።',
   err_leave_session_active:'ለመልቀቅ ጊዜው አልፏል — ጨዋታው ተጀምሯል።', err_not_registered:'አልተመዘገቡም።',
   err_house_not_ready:'ስርዓቱ እየጀመረ ነው — እባክዎ ከትንሽ ቆይታ በኋላ እንደገና ይሞክሩ።',
-  /* add card / shared cart */
-  nav_add_card:'ጨምር', add_card_title:'ካርቴላ ጨምር', quick_add_randoms_title:'ፈጣን የዘፈቀደ ጭማሪ',
-  add_to_cart_btn:'ወደ ጋሪ ጨምር', ac_remaining_line:'በዚህ ዙር {n} ተጨማሪ መጨመር ይችላሉ',
-  ac_cart_line:'{n} በጋሪ ውስጥ · {amt} ብር', ac_added_toast:'{n} ካርቴላ ወደ ጋሪዎ ታክሏል',
-  cart_title:'ጋሪዎ', empty_cart_msg:'ጋሪዎ ባዶ ነው', cart_count_line:'{n} ካርቴላ',
-  view_cart_btn:'ጋሪ ይመልከቱ', qty_label:'ብዛት', remove_label:'አስወግድ', total_label:'ጠቅላላ', purchase_btn:'ግዛ',
-  availability_changed_toast:'አንዳንድ ካርቴላዎች ተቀይረዋል — እባክዎ ጋሪዎን ይመልከቱ።',
-  replacing_card_toast:'{n} ያልተገኙ ካርቴላዎችን በአዲስ እየተካ ነው…',
-  menu_label:'ዝርዝር', theme_label:'ገጽታ', language_label:'ቋንቋ'
+  menu_label:'ዝርዝር', theme_label:'ገጽታ', language_label:'ቋንቋ',
+  /* marketplace UI: sticky toolbar / + Add Card / shared cart */
+  nav_add:'ጨምር',
+  add_card_title:'ካርቴላ ጨምር',
+  quick_add_title:'ፈጣን የዘፈቀደ ምርጫ',
+  quick_add_desc:'ስንት እንደሚፈልጉ ይምረጡ — ነጻ ካርቴላዎችን በዘፈቀደ እንመርጥልዎታለን። እስኪገዙ ድረስ ምንም አይያዝም።',
+  qty_label:'ብዛት',
+  add_to_cart_btn:'ወደ ጋሪ ጨምር',
+  add_generating:'ካርቴላዎች እየተመረጡ ነው…',
+  add_short_toast:'{n} ነጻ ካርቴላ ብቻ ተገኝቷል።',
+  add_none_toast:'አሁን ነጻ ካርቴላ የለም።',
+  add_owned_line:'በዚህ ዙር ያሉዎት ካርቴላዎች: {n} / {max}',
+  add_browse_link:'ወይም እራስዎ ተመልክተው ይምረጡ ›',
+  cart_title:'ጋሪዎ',
+  cart_aria:'ጋሪ',
+  cart_empty:'ጋሪዎ ባዶ ነው።',
+  cart_total:'ጠቅላላ',
+  cart_remove:'አስወግድ',
+  cart_clear:'አጽዳ',
+  cart_purchase_btn:'ግዛ — {amt} ብር',
+  cart_checking:'ተገኝነት እየተረጋገጠ ነው…',
+  cart_view_btn:'ጋሪ ይመልከቱ ({n}) — {amt} ብር',
+  cart_avail_changed:'ተገኝነት ተቀይሯል',
+  cart_replaced_notice:'{n} የዘፈቀደ ካርቴላ ተወስዷል — በአዲስ ተተክቷል። ጋሪዎን ይመልከቱና ይግዙ።',
+  cart_random_tag:'የዘፈቀደ ምርጫ',
+  search_aria:'የካርቴላ ቁጥር ፈልግ',
+  shuffle_aria:'ካርቴላዎችን ቀይር',
+  search_close_aria:'ፍለጋን ዝጋ',
+  cart_tap_remove:'ከጋሪ ለማስወገድ ካርቴላን ይንኩ።', cart_view_short:'ጋሪ ይመልከቱ'
 },
 om:{
   auth_tagline:'Taphaa Biingoo Addunyaa, Taphattoota Hedduu waliin', pwa_install_btn:'Buufadhaa 📥',
@@ -1335,15 +1446,35 @@ om:{
   leave_processing:'Adeemsifamaa jira…', leave_success_toast:'Marsaa keessaa baateerta — maallaqni kee deebi\u2019eera.',
   err_leave_session_active:'Yeroon ba\u2019uu darbeera — taphni jalqabeera.', err_not_registered:'Hin galmoofne.',
   err_house_not_ready:'Sirni ammuma jalqabaa jira — maaloo yeroo xiqqoo booda irra deebi\u2019aa yaalaa.',
-  /* add card / shared cart */
-  nav_add_card:'Dabali', add_card_title:'Kaardii Dabali', quick_add_randoms_title:'Dafanii Kan Carraa Dabali',
-  add_to_cart_btn:'Gaarii keessa galchi', ac_remaining_line:'Marsaa kana keessatti {n} dabalataa dandeessa',
-  ac_cart_line:'{n} gaarii keessa jira · Qarshii {amt}', ac_added_toast:'Kaardiin {n} gaarii keessanitti dabalameera',
-  cart_title:'Gaarii Keessan', empty_cart_msg:'Gaariin keessan duwwaadha', cart_count_line:'Kaardii {n}',
-  view_cart_btn:'Gaarii Ilaali', qty_label:'Baay\u2019ina', remove_label:'Balleessi', total_label:'Waliigala', purchase_btn:'Bitadhu',
-  availability_changed_toast:'Kaardiiwwan tokko tokko jijjiiramaniiru — maaloo gaarii keessan ilaalaa.',
-  replacing_card_toast:'Kaardiiwwan {n} hin argamne haaraan bakka buusaa jira…',
-  menu_label:'Toorbaa', theme_label:'Bifa', language_label:'Afaan'
+  menu_label:'Toorbaa', theme_label:'Bifa', language_label:'Afaan',
+  /* marketplace UI: sticky toolbar / + Add Card / shared cart */
+  nav_add:'Dabali',
+  add_card_title:'Kaardii Dabali',
+  quick_add_title:'Filannoo Saffisaa Tasaa',
+  quick_add_desc:'Hammam akka barbaaddu filadhu — kaardii bilisaa tasaan siif filla. Hanga bitattutti waan qabamu hin jiru.',
+  qty_label:'Baay’ina',
+  add_to_cart_btn:'Gaariitti Dabali',
+  add_generating:'Kaardiiwwan filachaa jira…',
+  add_short_toast:'Kaardiin bilisaa {n} qofa argameera.',
+  add_none_toast:'Amma kaardiin bilisaa hin jiru.',
+  add_owned_line:'Kaardiiwwan marsaa kanaa: {n} / {max}',
+  add_browse_link:'Yookaan ofiin ilaaltee filadhu ›',
+  cart_title:'Gaarii Kee',
+  cart_aria:'Gaarii',
+  cart_empty:'Gaariin kee duwwaadha.',
+  cart_total:'Waliigala',
+  cart_remove:'Balleessi',
+  cart_clear:'Haqi',
+  cart_purchase_btn:'Bitadhu — Qarshii {amt}',
+  cart_checking:'Argamuu mirkaneessaa jira…',
+  cart_view_btn:'Gaarii ilaali ({n}) — Qarshii {amt}',
+  cart_avail_changed:'Argamuun jijjiirameera',
+  cart_replaced_notice:'Kaardiin tasaa {n} fudhatameera — kan haaraatiin bakka bu’eera. Gaarii kee ilaalii booda bitadhu.',
+  cart_random_tag:'Filannoo tasaa',
+  search_aria:'Lakkoofsa kaardii barbaadi',
+  shuffle_aria:'Kaardii jijjiiri',
+  search_close_aria:'Barbaacha cufi',
+  cart_tap_remove:'Gaarii keessaa balleessuuf kaardii tuqi.', cart_view_short:'Gaarii ilaali'
 },
 en:{
   auth_tagline:'Live Global Multiplayer Bingo', pwa_install_btn:'Install App 📥',
@@ -1406,15 +1537,35 @@ en:{
   leave_processing:'Processing…', leave_success_toast:'You have left the round — your stake has been refunded.',
   err_leave_session_active:'Too late to leave — the round has started.', err_not_registered:'You are not registered.',
   err_house_not_ready:'System is still starting up — please try again in a moment.',
-  /* add card / shared cart */
-  nav_add_card:'Add', add_card_title:'Add Cards', quick_add_randoms_title:'Quick Add Randoms',
-  add_to_cart_btn:'Add to Cart', ac_remaining_line:'{n} more allowed this round',
-  ac_cart_line:'{n} in cart · {amt} ETB', ac_added_toast:'{n} card(s) added to your cart',
-  cart_title:'Your Cart', empty_cart_msg:'Your cart is empty', cart_count_line:'{n} cards',
-  view_cart_btn:'View Cart', qty_label:'Quantity', remove_label:'Remove', total_label:'Total', purchase_btn:'Purchase',
-  availability_changed_toast:'Availability changed — please review your cart.',
-  replacing_card_toast:'Replacing {n} unavailable card(s) with new picks…',
-  menu_label:'Menu', theme_label:'Theme', language_label:'Language'
+  menu_label:'Menu', theme_label:'Theme', language_label:'Language',
+  /* marketplace UI: sticky toolbar / + Add Card / shared cart */
+  nav_add:'Add Card',
+  add_card_title:'Add Cards',
+  quick_add_title:'Quick Add Randoms',
+  quick_add_desc:'Choose how many and we pick free random cards for you. Nothing is held until you purchase.',
+  qty_label:'Quantity',
+  add_to_cart_btn:'Add to Cart',
+  add_generating:'Picking cards…',
+  add_short_toast:'Only {n} free card(s) were available.',
+  add_none_toast:'No free cards available right now.',
+  add_owned_line:'Your cards this round: {n} / {max}',
+  add_browse_link:'Or browse and pick cards yourself ›',
+  cart_title:'Your Cart',
+  cart_aria:'Cart',
+  cart_empty:'Your cart is empty.',
+  cart_total:'Total',
+  cart_remove:'Remove',
+  cart_clear:'Clear',
+  cart_purchase_btn:'Purchase — {amt} ETB',
+  cart_checking:'Checking availability…',
+  cart_view_btn:'View cart ({n}) — {amt} ETB',
+  cart_avail_changed:'Availability changed',
+  cart_replaced_notice:'{n} random card(s) were taken and replaced with new ones. Review your cart, then purchase.',
+  cart_random_tag:'Random pick',
+  search_aria:'Search card number',
+  shuffle_aria:'Shuffle cards',
+  search_close_aria:'Close search',
+  cart_tap_remove:'Tap a card to remove it from your cart.', cart_view_short:'View cart'
 }
 };
 var LANG_NATIVE_NAMES = { ti:'ትግርኛ', am:'አማርኛ', om:'Afaan Oromoo', en:'English' };
@@ -1433,8 +1584,9 @@ function applyI18n(){
   // takes effect immediately without needing a fresh Firestore snapshot.
   _renderSessionUI(); if(_sessionData && _currentScreen==='game') _renderGameScreen();
   if(currentUser) updateBalanceHTML(currentUser.balance||0);
+  document.querySelectorAll('[data-i18n-aria]').forEach(function(el){ el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria'))); });
+  _renderCartUI();
   if($('mpGrid') && $('mpGrid').innerHTML) renderSessionMarketplace();
-  _syncCartUI(); // cart modal / ＋ screen / nav badge can hold language-dependent text on any screen
   _allNumbersOpen = _allNumbersOpen; // no-op guard, toggle label below
   var toggleBtn = $('allNumbersToggleBtn');
   if(toggleBtn) toggleBtn.textContent = _allNumbersOpen ? t('hide_numbers_btn') : t('show_numbers_btn');
@@ -1955,7 +2107,7 @@ function navigateTo(screen){
     screen = 'game';
   }
   _currentScreen = screen;
-  ['home','game','wallet','profile','admin','addcard'].forEach(function(s){
+  ['home','game','addCard','wallet','profile','admin'].forEach(function(s){
     $('screen'+s.charAt(0).toUpperCase()+s.slice(1)).classList.toggle('active', s===screen);
     var nav = $('nav'+s.charAt(0).toUpperCase()+s.slice(1));
     if(nav) nav.classList.toggle('active', s===screen);
@@ -1963,6 +2115,7 @@ function navigateTo(screen){
   _setSessionUIMode(screen === 'game');
   _renderSessionUI();   // also starts/stops the reservation listener (only watched while the marketplace is on screen)
   playClick();
+  if(screen === 'addCard') window.scrollTo(0, 0);
   if(screen === 'wallet') loadBillingHistory();
   if(screen === 'admin' && _isAdminUser) adminTab(_adminActiveTab || 'session');
 }
@@ -2280,7 +2433,7 @@ function _attachToSession(sessionId){
 // attempt this or a race between them can leave a joined player stuck on
 // the Home screen's stale countdown until they manually refresh.
 function _maybeAutoEnterGame(){
-  if(_sessionData && _sessionData.status==='active' && _myPlayerDoc && _currentScreen==='home') navigateTo('game');
+  if(_sessionData && _sessionData.status==='active' && _myPlayerDoc && (_currentScreen==='home' || _currentScreen==='addCard')) navigateTo('game');
 }
 function _renderNoActiveSession(){ _renderSessionUI(); }
 
@@ -2365,9 +2518,7 @@ function _renderSessionUI(){
   // via the session/player listeners no longer pays for ~15 unrelated Home DOM writes on every call.
   // _market/_sessionData/_myOrder keep updating regardless of screen; navigateTo() calls this function
   // again in full the instant Home becomes visible, so nothing goes stale.
-  // The ＋ Add Card screen shares the same underlying market/session state (and the same cart) as the
-  // Home marketplace, so it gets its own lightweight render branch here rather than a second listener.
-  if(_currentScreen === 'addcard'){ _syncResvAvailability(false); _renderAddCardScreen(); return; }
+  if(_currentScreen === 'addCard'){ _syncResvAvailability(false); _renderAddCardScreen(); return; }   // the ＋ screen has its own renderer
   if(_currentScreen !== 'home'){ _syncResvAvailability(false); return; }
   var st = _mpState();
   var noSess = $('noActiveSession'), wrap = $('sessionHeroWrap');
@@ -2399,21 +2550,10 @@ function _renderSessionUI(){
     pill.textContent = d.status === 'waiting' ? t('status_waiting') : (d.status === 'active' ? t('status_active') : (d.status === 'force_ended' ? t('status_force_ended') : t('status_ended')));
   }
 
+  _mirrorClock(_clockText());   // sticky marketplace toolbar shows the same countdown/status as the hero
   var lockedNow = (st === 'locked_soon');
   $('lockBanner').classList.toggle('hidden', !lockedNow);
   $('heroCountdown').classList.toggle('locked', lockedNow);
-
-  // Sticky-toolbar mini status: mirrors the hero countdown/status so it stays visible while the
-  // player scrolls the card grid (Phase 6/7). The per-second countdown digits are kept in sync by
-  // _updateCountdownTicker()'s tick(), below — this covers the initial paint and every other state.
-  var mini = $('mpMiniStatus');
-  if(mini){
-    var miniClock = (!pre && d.status === 'waiting') ? $('heroCountdown').textContent : '';
-    var miniLabel = pre ? t('status_open')
-      : (d.status === 'waiting' ? t('status_waiting') : (d.status === 'active' ? t('status_active') : (d.status === 'force_ended' ? t('status_force_ended') : t('status_ended'))));
-    mini.textContent = (miniClock ? ('\u23F1 ' + miniClock + ' \u00b7 ') : '') + miniLabel;
-    mini.classList.toggle('locked', lockedNow);
-  }
 
   var open = (st === 'open_pre' || st === 'open_session');
   var full = (c.totalCardCount || 0) >= CATALOG_SIZE;
@@ -2453,10 +2593,9 @@ function _updateCountdownTicker(){
   function tick(){
     if(!_sessionData || _sessionData.status !== 'waiting'){ clearInterval(_countdownTimer); return; }
     var ms = _sessionData.countdownEnd.toMillis() - Date.now();
-    var clockTxt = fmtClock(Math.max(0, Math.round(ms / 1000)));
-    $('heroCountdown').textContent = clockTxt;
-    var mini = $('mpMiniStatus');
-    if(mini && _currentScreen === 'home') mini.textContent = '\u23F1 ' + clockTxt + ' \u00b7 ' + t('status_waiting');
+    var clk = fmtClock(Math.max(0, Math.round(ms / 1000)));
+    $('heroCountdown').textContent = clk;
+    _mirrorClock(clk);   // sticky toolbar + ＋ header
     // cross the 60-second lock line -> repaint (marketplace closes with no refresh, exactly when the rules will start refusing)
     var lockedNow = ms <= LOCK_SECONDS * 1000;
     if(lockedNow !== _tickLocked){ _tickLocked = lockedNow; _renderSessionUI(); }
@@ -2533,14 +2672,16 @@ function cartAdd(cardId, source){
   if(source) _cart.source = source;
   if(source === 'quickbuy') _cart.random[cardId] = true;
   if(_catalogCache[cardId]) _cart.cards[cardId] = _catalogCache[cardId];
+  _cartChanged();
 }
 function cartRemove(cardId){
   var pos = _cart.ids.indexOf(cardId);
   if(pos !== -1) _cart.ids.splice(pos, 1);
   delete _cart.cards[cardId];
   delete _cart.random[cardId];
+  _cartChanged();
 }
-function cartClear(){ _cart.ids = []; _cart.cards = {}; _cart.source = null; _cart.random = {}; _cart.loading = false; _cart.verifying = false; }
+function cartClear(){ _cart.ids = []; _cart.cards = {}; _cart.source = null; _cart.random = {}; _cart.loading = false; _cart.verifying = false; _cartChanged(); }
 // Loads catalog data for any candidate that doesn't have it yet. The manual marketplace below never
 // needs this itself (a card can only be added to the cart from an already-loaded catalog page), but a
 // future entry point that adds ids directly (e.g. server-picked random cards) will.
@@ -2550,8 +2691,8 @@ function cartEnsureLoaded(){
   _cart.loading = true;
   return _fetchCatalogCards(missing).then(function(cards){
     cards.forEach(function(c){ _cart.cards[c.cardId] = c; });
-    _cart.loading = false;
-  }, function(e){ _cart.loading = false; throw e; });
+    _cart.loading = false; _cartChanged();
+  }, function(e){ _cart.loading = false; _cartChanged(); throw e; });
 }
 // Explicit ONE-TIME availability check for the cart's current candidates (see _fetchReservations
 // below — the marketplace no longer keeps a realtime cardReservations listener open just to display
@@ -2660,169 +2801,13 @@ function _topUpRandomCart(count){
   }, function(){ return { added: [], short: true }; });
 }
 
-// ── Shared cart UI (Home marketplace + ＋ Add Card screen, ONE cart) ────────────────────────────
-// Everything below is UI-only: it reads/renders _cart and calls the existing engine functions above
-// (cartAdd/cartRemove/generateCartCandidates/verifyAndReplaceCartCandidates/buyCards) — it never
-// touches Firestore itself and never duplicates the purchase transaction.
-var _cartVerifying = false;   // guards the modal's Purchase button during the pre-purchase verify step
-function _syncCartUI(){
-  var n = _cart.ids.length;
-  var navBadge = $('navAddCardBadge');
-  if(navBadge){ navBadge.textContent = n; navBadge.classList.toggle('hidden', n === 0); }
-  var cartBtn = $('mpCartBtn');
-  if(cartBtn) cartBtn.textContent = '\uD83D\uDED2 ' + n;
-  renderCartModal();
-  if(_currentScreen === 'addcard') _renderAddCardScreen();
-}
-function openCart(){ playClick(); _syncCartUI(); openSheet('cartModal'); }
-function closeCart(){ closeSheet('cartModal'); }
-function renderCartModal(){
-  var list = $('cartList'); if(!list) return;
-  if(!_cart.ids.length){
-    list.innerHTML = '<div class="empty-state"><div class="ic">\uD83D\uDED2</div><span>' + t('empty_cart_msg') + '</span></div>';
-  } else {
-    list.innerHTML = _cart.ids.map(function(id){
-      return '<div class="cart-row">' +
-        '<div class="cart-row-info"><div class="cart-row-id">\uD83C\uDFAB ' + t('card_label') + ' ' + esc(id) + '</div></div>' +
-        '<div class="cart-row-price">' + fmtETB(CARD_PRICE) + ' ' + t('currency_unit') + '</div>' +
-        '<button type="button" class="cart-row-remove" onclick="toggleSessionCard(\'' + id + '\')" aria-label="' + esc(t('remove_label')) + '">\u2715</button></div>';
-    }).join('');
-  }
-  var n = _cart.ids.length;
-  $('cartSummaryRow').innerHTML = '<span>' + t('cart_count_line', { n: n }) + '</span><b>' + t('total_label') + ': ' + fmtETB(n * CARD_PRICE) + ' ' + t('currency_unit') + '</b>';
-  var btn = $('cartPurchaseBtn');
-  if(btn){
-    btn.setAttribute('aria-label', t('purchase_btn'));
-    if(!_mp.buying && !_cartVerifying){
-      btn.disabled = (n === 0);
-      btn.textContent = n === 0 ? t('buy_cards_btn') : t('join_cards_btn_template', { n: n, amt: fmtETB(n * CARD_PRICE) });
-    }
-  }
-}
-// Phase 11 flow: fresh availability verification (replacing any now-taken random candidates) BEFORE
-// handing off to the existing authoritative buyCards() transaction. If verification changed the cart
-// (a candidate was taken and dropped/replaced), stop here and let the player review the updated cart —
-// buyCards() itself still re-verifies everything again inside its own transaction regardless.
-function cartPurchaseAction(){
-  if(_mpJoinInProgress || _cartVerifying || !_cart.ids.length) return;
-  _cartVerifying = true;
-  var btn = $('cartPurchaseBtn');
-  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + t('processing'); }
-  verifyAndReplaceCartCandidates().then(function(r){
-    _cartVerifying = false;
-    var changed = !!((r.replaced && r.replaced.length) || (r.removedManual && r.removedManual.length) || (r.added && r.added.length));
-    if(!changed){ buyCards(); return; }
-    _syncCartUI();
-    var manualTaken = r.removedManual && r.removedManual.length;
-    var randomReplaced = r.replaced && r.replaced.length;
-    if(manualTaken) showToast(t('mp_card_taken_toast', { ids: r.removedManual.join(', ') }));
-    if(randomReplaced) showToast(t('replacing_card_toast', { n: r.replaced.length }));
-    if(!manualTaken && !randomReplaced) showToast(t('availability_changed_toast'));
-    if(r.short) showToast(t('mp_full_toast'));
-  }, function(e){
-    _cartVerifying = false;
-    _syncCartUI();
-    showToast(_describeTxError(e, 'verify cart'));
-  });
-}
-
-// ── ＋ Add Card screen (quick random purchase) ──────────────────────────────────────────────────
-var ADD_CARD_PRESETS = [2, 4, 6, 10];
-function _addCardRemaining(){ return Math.max(0, MAX_CARDS - _mpOwned() - _cart.ids.length); }
-function _addCardSetQty(n){
-  var input = $('addCardQtyInput'); if(!input) return;
-  var remaining = _addCardRemaining();
-  input.value = Math.max(1, Math.min(n, remaining || 1));
-  playClick();
-  _renderAddCardScreen();
-}
-function _addCardQtyStep(delta){
-  var input = $('addCardQtyInput'); if(!input) return;
-  var remaining = _addCardRemaining();
-  var v = (parseInt(input.value, 10) || 0) + delta;
-  v = Math.max(1, Math.min(v, remaining || 1));
-  input.value = v;
-  playClick();
-  _renderAddCardScreen();
-}
-function _addCardQtySync(){ _renderAddCardScreen(); }
-function addCardQuickAdd(){
-  var remaining = _addCardRemaining();
-  var input = $('addCardQtyInput');
-  var qty = Math.min(remaining, Math.max(0, parseInt((input && input.value) || 0, 10) || 0));
-  if(qty <= 0){ showToast(t('max_cards_toast', { n: MAX_CARDS })); return; }
-  playClick();
-  var btn = $('addCardAddBtn');
-  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + t('processing'); }
-  generateCartCandidates(qty).then(function(r){
-    _syncCartUI();
-    if(r.got > 0) showToast(t('ac_added_toast', { n: r.got }));
-    if(r.short) showToast(t('mp_full_toast'));
-  }).catch(function(e){
-    console.error('[AddCard] quick add failed', e);
-    showToast(_describeTxError(e, 'add cards'));
-  }).then(function(){
-    _renderAddCardScreen();
-  });
-}
-// Mirrors the subset of _renderSessionUI()'s gating logic that decides whether the marketplace is
-// open (open/not full/under MAX_CARDS/not mid-attach) — see that function for the authoritative states.
-function _renderAddCardScreen(){
-  var closedNotice = $('addCardClosedNotice'), body = $('addCardBody');
-  if(!closedNotice || !body) return;
-  var st = _mpState();
-  var open = (st === 'open_pre' || st === 'open_session');
-  var c = (st === 'open_pre') ? _market : _sessionData;
-  var full = !!(c && (c.totalCardCount || 0) >= CATALOG_SIZE);
-  var owned = _mpOwned();
-  var attaching = !!(_myOrder && _myOrder.status === 'pending_next_session' && _market && _market.sessionId);
-  var usable = open && !full && owned < MAX_CARDS && !attaching;
-
-  var msg = '';
-  if(st === 'not_ready' || st === 'loading') msg = t('mp_not_ready');
-  else if(st === 'locked_active') msg = t('mp_state_locked_active');
-  else if(st === 'locked_result') msg = t('mp_state_locked_result');
-  else if(st === 'locked_soon') msg = t('registration_locked_notice');
-  else if(attaching) msg = t('mp_attaching_toast');
-  else if(full) msg = t('mp_state_full');
-  else if(owned >= MAX_CARDS) msg = t('max_cards_toast', { n: MAX_CARDS });
-  $('addCardClosedMsg').textContent = msg;
-  closedNotice.classList.toggle('hidden', usable);
-  body.classList.toggle('hidden', !usable);
-  if(!usable) return;
-
-  var remaining = _addCardRemaining();
-  var input = $('addCardQtyInput');
-  var q = parseInt(input.value, 10) || 0;
-  if(q > remaining) q = remaining;
-  if(q < 1 && remaining > 0) q = 1;
-  input.value = q;
-  input.max = String(Math.max(1, remaining));
-
-  $('addCardRemainingLine').textContent = t('ac_remaining_line', { n: remaining });
-  $('addCardPresets').innerHTML = ADD_CARD_PRESETS.map(function(p){
-    var dis = p > remaining;
-    return '<button type="button" class="btn btn-secondary btn-sm ac-preset-btn' + (q === p ? ' active' : '') + '"' + (dis ? ' disabled' : '') + ' onclick="_addCardSetQty(' + p + ')">' + p + '</button>';
-  }).join('');
-
-  var addBtn = $('addCardAddBtn');
-  if(addBtn && !_cart.loading){
-    addBtn.disabled = remaining <= 0;
-    addBtn.textContent = t('add_to_cart_btn');
-  }
-  $('addCardCartLine').textContent = t('ac_cart_line', { n: _cart.ids.length, amt: fmtETB(_cart.ids.length * CARD_PRICE) });
-}
-
 var _mp = { initialized:false, start:CATALOG_FIRST_ID, cards:[], loading:false, token:0, buying:false, pendingIds:[] };
 var _mpJoinInProgress = false;   // a purchase transaction is running
 var _leaveInProgress = false;    // a cancel transaction is running
 
 function _mpOwned(){ return _myOrder ? (_myOrder.ticketCount || 0) : 0; }
-// NOTE: this used to also call cartClear() here, but the cart is now shared with the ＋ Add Card
-// screen, which can populate it before Home's marketplace has ever initialized this round — clearing
-// here would silently wipe cards the player already added from that screen. The cart is still reset
-// at every point that actually needs it (round change / listener teardown in _onMarketSnapshot and
-// _teardownMarketListeners, above), so this extra clear was redundant in every other case anyway.
+// (no cartClear() here any more: the cart is already empty on every path that resets _mp.initialized — sign-out and
+// new round both clear it — and the ＋ Add Card screen may legitimately have filled it before Home first renders.)
 function _mpInit(){ _mp.initialized = true; mpRandomPage(true); }
 
 // One range read of the IMMUTABLE catalog (document ids are 5-digit strings, so lexical order == numeric order).
@@ -2846,11 +2831,12 @@ function _fetchCatalogCards(ids){
     });
   }));
 }
-function mpLoadPage(startId){
+function mpLoadPage(startId, scrollToGrid){
   startId = Math.max(CATALOG_FIRST_ID, Math.min(startId, CATALOG_FIRST_ID + CATALOG_SIZE - MP_PAGE_SIZE));
   _mp.start = startId; _mp.loading = true;
   var token = ++_mp.token;
   renderSessionMarketplace();
+  if(scrollToGrid) _mpScrollToGridTop();
   _refreshMarketplaceAvailability();   // explicit one-time read for the page being requested — no live listener
   _cardRangeFetch(startId).then(function(cards){
     if(token !== _mp.token) return;
@@ -2861,8 +2847,8 @@ function mpLoadPage(startId){
     showToast(_describeTxError(e, 'load cards')); renderSessionMarketplace();
   });
 }
-function mpNext(){ playClick(); var n = _mp.start + MP_PAGE_SIZE; if(n > CATALOG_FIRST_ID + CATALOG_SIZE - MP_PAGE_SIZE) n = CATALOG_FIRST_ID; mpLoadPage(n); }
-function mpPrev(){ playClick(); var p = _mp.start - MP_PAGE_SIZE; if(p < CATALOG_FIRST_ID) p = CATALOG_FIRST_ID + CATALOG_SIZE - MP_PAGE_SIZE; mpLoadPage(p); }
+function mpNext(){ playClick(); var n = _mp.start + MP_PAGE_SIZE; if(n > CATALOG_FIRST_ID + CATALOG_SIZE - MP_PAGE_SIZE) n = CATALOG_FIRST_ID; mpLoadPage(n, true); }
+function mpPrev(){ playClick(); var p = _mp.start - MP_PAGE_SIZE; if(p < CATALOG_FIRST_ID) p = CATALOG_FIRST_ID + CATALOG_SIZE - MP_PAGE_SIZE; mpLoadPage(p, true); }
 // "Shuffle": jump to a random page of the EXISTING catalog (prefers a page that still has free cards). Nothing is generated.
 function mpRandomPage(silent){
   if(!silent) playClick();
@@ -2873,20 +2859,13 @@ function mpRandomPage(silent){
     if(free > 0) pick = s;
   }
   if(pick === null) pick = CATALOG_FIRST_ID + Math.floor(Math.random() * pages) * MP_PAGE_SIZE;
-  mpLoadPage(pick);
+  mpLoadPage(pick, !silent);
 }
 function mpGoto(){
   var v = parseInt(($('mpGotoInput').value || '').trim(), 10);
-  if(!(v >= CATALOG_FIRST_ID && v < CATALOG_FIRST_ID + CATALOG_SIZE)){ showToast(t('mp_goto_invalid')); return; }
-  playClick(); mpLoadPage(v);
-}
-// Compact sticky toolbar: search collapses behind the 🔍 icon instead of a permanently-visible
-// input, per Phase 8 (either is acceptable as long as goto/search behavior itself is unchanged).
-function _mpToggleSearch(){
-  playClick();
-  var el = $('mpToolbarSearch'); if(!el) return;
-  el.classList.toggle('hidden');
-  if(!el.classList.contains('hidden')){ var inp = $('mpGotoInput'); if(inp) inp.focus(); }
+  if(!(v >= CATALOG_FIRST_ID && v < CATALOG_FIRST_ID + CATALOG_SIZE)){ showToast(t('mp_goto_invalid')); return false; }
+  playClick(); mpLoadPage(v, true);
+  return true;
 }
 function toggleSessionCard(cardId){
   playClick();
@@ -2915,11 +2894,276 @@ function renderSessionMarketplace(){
     }).join('');
   }
   var last = Math.min(_mp.start + MP_PAGE_SIZE - 1, CATALOG_FIRST_ID + CATALOG_SIZE - 1);
-  $('mpPageLine').textContent = t('mp_page_line', { a: _mp.start, b: last });
-  // Selection count/cost/join-button and the per-id chip list used to live inline here; they now live
-  // in the shared cart modal (reachable from both Home and ＋ Add Card) — see _syncCartUI/renderCartModal.
-  _syncCartUI();
+  var pl = t('mp_page_line', { a: _mp.start, b: last });
+  $('mpPageLine').textContent = pl;
+  $('mpPageLineB').textContent = pl;
+  _renderCartUI();   // cart badge, cart shortcut, and (when open) the cart panels — purchase-button state comes from _cart.purchasing
 }
+/* ───────────────────────────── MARKETPLACE UI (sticky toolbar · ＋ Add Card · cart panels) ──────────────
+   INTERFACE LAYER ONLY. Everything below reads/writes the ONE shared cart (_cart) through the existing
+   engine above (cartAdd / cartRemove / cartClear / generateCartCandidates / verifyAndReplaceCartCandidates)
+   and hands the final purchase to the existing buyCards() transaction. It adds no Firestore listener, no
+   polling and no Firestore write of its own, and it never treats a cart candidate as a reservation. */
+var _cartUi = { checking:false, generating:false, notice:'', qty:2 };
+var _cartUiQueued = false;
+
+// cartAdd/cartRemove/cartClear/cartEnsureLoaded call this after every change. Coalesced into one repaint
+// per tick so adding 10 random candidates in a loop costs one render, not ten.
+function _cartChanged(){
+  if(_cartUiQueued) return;
+  _cartUiQueued = true;
+  Promise.resolve().then(function(){ _cartUiQueued = false; _cartRefreshAll(); });
+}
+function _cartRefreshAll(){ if(_currentScreen === 'addCard') _renderAddCardScreen(); else _renderCartUI(); }
+function _cartBusy(){ return !!(_cart.purchasing || _mp.buying || _mpJoinInProgress || _cartUi.checking); }
+function _prefersReducedMotion(){ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+
+// ── countdown/status mirrored into the sticky toolbar and the ＋ screen header ──
+function _clockText(){
+  if(_mpState() === 'open_pre') return t('status_open');
+  var h = $('heroCountdown'); var s = h ? h.textContent : '';
+  return s || '--:--';
+}
+function _mirrorClock(txt){
+  var els = document.querySelectorAll('.js-cd-mirror');
+  var isTime = /^\d\d:\d\d$/.test(txt);
+  for(var i = 0; i < els.length; i++){
+    if(els[i].textContent !== txt) els[i].textContent = txt;
+    if(els[i].parentNode) els[i].parentNode.classList.toggle('is-text', !isTime);
+  }
+}
+
+// ── cart rendering ──
+function _miniCells(nums){
+  var out = '';
+  for(var i = 0; i < 25; i++){
+    out += '<span class="' + (i === 12 ? 'free' : '') + '">' + (i === 12 ? '\u2605' : (nums && nums[i] != null ? nums[i] : '')) + '</span>';
+  }
+  return out;
+}
+function _cartPanelParts(){
+  var n = _cart.ids.length;
+  if(!n){
+    return { body: '<div class="cart-empty"><div class="ic" aria-hidden="true">\uD83D\uDED2</div><div>' + esc(t('cart_empty')) + '</div></div>', foot: '' };
+  }
+  var busy = _cartBusy(), total = n * CARD_PRICE, unloaded = false;
+  var items = _cart.ids.map(function(id){
+    var c = _cart.cards[id];
+    if(!c) unloaded = true;
+    return '<div class="mini-card cart-item' + (c ? '' : ' is-loading') + '">' +
+      (busy ? '' : '<button type="button" class="cart-x" aria-label="' + esc(t('cart_remove')) + ' ' + esc(id) + '" onclick="cartUiRemove(\'' + esc(id) + '\')">\u2715</button>') +
+      (_cart.random[id] ? '<span class="cart-rnd" role="img" aria-label="' + esc(t('cart_random_tag')) + '">\uD83C\uDFB2</span>' : '') +
+      '<div class="card-id">' + esc(t('card_label')) + ' ' + esc(id) + '</div>' +
+      '<div class="mini-grid">' + _miniCells(c ? c.numbers : null) + '</div>' +
+      '<div class="cart-price">' + fmtETB(CARD_PRICE) + ' ' + esc(t('currency_unit')) + '</div></div>';
+  }).join('');
+  var bal = (currentUser && currentUser.balance) || 0;
+  var poor = bal < total;
+  var label, dis;
+  if(_cart.purchasing || _mp.buying || _mpJoinInProgress){ label = '<span class="spinner"></span> ' + esc(t('processing')); dis = true; }
+  else if(_cartUi.checking){ label = '<span class="spinner"></span> ' + esc(t('cart_checking')); dis = true; }
+  else if(unloaded || _cart.loading){ label = esc(t('mp_loading')); dis = true; }
+  else { label = esc(t('cart_purchase_btn', { amt: fmtETB(total) })); dis = poor; }
+  var foot =
+    '<div class="cart-sum"><span class="muted">' + n + ' ' + esc(t('cards_suffix')) + '</span>' +
+      '<span><span class="muted">' + esc(t('cart_total')) + '</span> <b>' + fmtETB(total) + ' ' + esc(t('currency_unit')) + '</b></span></div>' +
+    (_cartUi.notice ? '<div class="cart-note" role="status"><b>' + esc(t('cart_avail_changed')) + '.</b> ' + esc(_cartUi.notice) + '</div>' : '') +
+    (poor && !busy ? '<div class="cart-note cart-note-danger" role="alert">' + esc(t('insufficient_balance_toast')) + '</div>' : '') +
+    '<div class="cart-actions">' +
+      '<button type="button" class="btn btn-secondary cart-clear"' + (busy ? ' disabled' : '') + ' onclick="cartUiClear()">' + esc(t('cart_clear')) + '</button>' +
+      '<button type="button" class="btn btn-primary btn-buy"' + (dis ? ' disabled' : '') + ' onclick="cartUiPurchase()">' + label + '</button>' +
+    '</div>';
+  return { body: '<div class="cart-grid">' + items + '</div>', foot: foot };
+}
+// Home-marketplace look for the cart's cards (same .mini-card markup + selected state as renderSessionMarketplace);
+// tapping a card removes it from the shared cart, exactly like un-selecting it on Home.
+function _cartHomeGridHTML(){
+  var busy = _cartBusy();
+  return _cart.ids.map(function(id){
+    var c = _cart.cards[id];
+    return '<div class="mini-card selected' + (c ? '' : ' cart-item is-loading') + '"' + (busy ? '' : ' onclick="cartUiRemove(\'' + esc(id) + '\')"') + '>' +
+      '<div class="check">\u2713</div>' +
+      (_cart.random[id] ? '<span class="cart-rnd" role="img" aria-label="' + esc(t('cart_random_tag')) + '">\uD83C\uDFB2</span>' : '') +
+      '<div class="card-id">' + esc(t('card_label')) + ' ' + esc(id) + '</div>' +
+      '<div class="mini-grid">' + _miniCells(c ? c.numbers : null) + '</div></div>';
+  }).join('');
+}
+function _renderCartUI(){
+  if(typeof _cart === 'undefined' || !_cart || typeof _cartUi === 'undefined') return;
+  var n = _cart.ids.length, total = n * CARD_PRICE;
+  var cnt = $('mpCartCount'); if(cnt){ cnt.textContent = n; cnt.classList.toggle('hidden', !n); }
+  var cb = $('mpCartBtn'); if(cb){ cb.classList.toggle('has-items', n > 0); cb.setAttribute('aria-label', t('cart_aria') + ' (' + n + ')'); }
+  var nb = $('navAddBadge'); if(nb){ nb.textContent = n; nb.classList.toggle('hidden', !n); }
+  var cw = $('mpCartCtaWrap'), cc = $('mpCartCta');
+  if(cw && cc){ cw.classList.toggle('hidden', !n); if(n) cc.textContent = '\uD83D\uDED2 ' + t('cart_view_btn', { n: n, amt: fmtETB(total) }); }
+  var sheet = $('cartSheet'), sheetOpen = !!(sheet && !sheet.classList.contains('hidden'));
+  var inline = (_currentScreen === 'addCard') ? $('addCartInline') : null;
+  if(inline){   // ＋ screen: summary/purchase bar + the cards as a Home-style grid below it
+    var gw = $('addCardsGridWrap'), gr = $('addCardsGrid');
+    if(gw && gr){ gw.classList.toggle('hidden', !n); gr.innerHTML = n ? _cartHomeGridHTML() : ''; }
+    var vb = $('addViewCartBtn'); if(vb) vb.classList.toggle('hidden', !n);
+  }
+  if(!sheetOpen && !inline) return;
+  var p = _cartPanelParts();
+  if(sheetOpen){ $('cartSheetBody').innerHTML = p.body; $('cartSheetFoot').innerHTML = p.foot; }
+  if(inline) inline.innerHTML = n ? '<div class="cart-foot">' + p.foot + '</div>' : p.body;
+}
+function openCartSheet(){ playClick(); openSheet('cartSheet'); _renderCartUI(); }
+function closeCartSheet(){ _cartUi.notice = ''; closeSheet('cartSheet'); }
+
+// ── cart actions (all go through the shared engine) ──
+function cartUiRemove(id){
+  if(_cartBusy()) return;
+  playClick(); _cartUi.notice = '';
+  cartRemove(id);
+  if(_mp.initialized) renderSessionMarketplace();   // un-highlight the card in the Home grid
+  _cartRefreshAll();
+}
+function cartUiClear(){
+  if(_cartBusy()) return;
+  playClick(); _cartUi.notice = '';
+  cartClear();
+  if(_mp.initialized) renderSessionMarketplace();
+  _cartRefreshAll();
+}
+// Purchase = fresh availability check (verifyAndReplaceCartCandidates) -> if anything changed, STOP and let the
+// player review the updated cart -> otherwise hand off to the existing atomic buyCards() transaction.
+function cartUiPurchase(){
+  if(_cartBusy() || !_cart.ids.length) return;
+  _cartUi.notice = '';
+  _cartUi.checking = true; _cartRefreshAll();
+  verifyAndReplaceCartCandidates().then(function(r){
+    _cartUi.checking = false;
+    if(r.replaced.length + r.removedManual.length > 0){
+      var parts = [];
+      if(r.replaced.length) parts.push(t('cart_replaced_notice', { n: r.replaced.length }));
+      if(r.removedManual.length) parts.push(t('mp_card_taken_toast', { ids: r.removedManual.join(', ') }));
+      if(r.short) parts.push(t('mp_full_toast'));
+      _cartUi.notice = parts.join(' ');
+      showToast(t('cart_avail_changed'));
+      if(_mp.initialized) renderSessionMarketplace();
+      _cartRefreshAll();
+      return;
+    }
+    _cartRefreshAll();
+    if(_cart.ids.length) buyCards();
+  }).catch(function(e){
+    _cartUi.checking = false;
+    console.error('[Cart] availability check failed', e);
+    showToast(_describeTxError(e, 'check cards'));
+    _cartRefreshAll();
+  });
+}
+// Called by buyCards() after its transaction commits (the cart has just been cleared by it).
+function _onCartPurchased(){ _cartUi.notice = ''; closeCartSheet(); _cartRefreshAll(); }
+
+// ── Home toolbar: search toggle ──
+function mpToggleSearch(force){
+  var row = $('mpGotoRow'), btn = $('mpSearchToggle'); if(!row || !btn) return;
+  var open = (typeof force === 'boolean') ? force : row.classList.contains('hidden');
+  row.classList.toggle('hidden', !open);
+  btn.classList.toggle('on', open);
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if(open) setTimeout(function(){ var i = $('mpGotoInput'); if(i) i.focus(); }, 30);
+}
+function mpGotoSubmit(){ if(mpGoto()) mpToggleSearch(false); }
+// After a page turn / search / shuffle, bring the top of the new page into view (below the sticky toolbar).
+function _mpScrollToGridTop(){
+  var g = $('mpGrid'); if(!g) return;
+  var tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 70;
+  var st = $('mpSticky'), sh = st ? st.getBoundingClientRect().height : 0;
+  var y = g.getBoundingClientRect().top + window.pageYOffset - tb - sh - 8;
+  if(window.pageYOffset > y) window.scrollTo({ top: Math.max(0, y), behavior: _prefersReducedMotion() ? 'auto' : 'smooth' });
+}
+
+// ── ＋ Add Card screen: Quick Add Randoms ──
+function _addRemaining(){ return Math.max(0, MAX_CARDS - _mpOwned() - _cart.ids.length); }
+function _setQty(v){
+  var rem = _addRemaining();
+  _cartUi.qty = rem > 0 ? Math.max(1, Math.min(v, rem)) : 1;
+  var inp = $('addQty'); if(inp) inp.value = rem > 0 ? _cartUi.qty : '';
+  _renderAddCardScreen();
+}
+function addQtySet(q){ playClick(); _setQty(q); }
+function addQtyStep(d){ playClick(); _setQty(_cartUi.qty + d); }
+function addQtyInput(){
+  var v = parseInt(($('addQty').value || '').trim(), 10);
+  if(isNaN(v)) return;                                   // mid-typing (empty field) — leave it alone
+  _cartUi.qty = Math.max(1, Math.min(v, Math.max(1, _addRemaining())));
+  _renderAddCardScreen();                                // never rewrites the input while it has focus
+}
+function addQtyCommit(){ var inp = $('addQty'); if(inp) inp.value = _addRemaining() > 0 ? _cartUi.qty : ''; }
+function _scrollCartIntoView(){
+  var el = $('addCartCard'); if(!el || !el.scrollIntoView) return;
+  el.scrollIntoView({ behavior: _prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+}
+// The ONLY thing this passes on is the requested quantity — candidate generation (one explicit availability
+// read, local random pick, catalog load, shared cart) is entirely generateCartCandidates().
+function quickAddRandoms(){
+  if(_cartUi.generating || _cartBusy()) return;
+  var st = _mpState();
+  if(st !== 'open_pre' && st !== 'open_session'){ showToast(t('mp_closed_toast')); return; }
+  var qty = Math.min(_cartUi.qty, _addRemaining());
+  if(qty < 1){ showToast(t('max_cards_toast', { n: MAX_CARDS })); return; }
+  playClick();
+  _cartUi.generating = true; _cartUi.notice = '';
+  _renderAddCardScreen();
+  generateCartCandidates(qty).then(function(r){
+    _cartUi.generating = false;
+    if(!r.got) showToast(t('add_none_toast'));
+    else if(r.short) showToast(t('add_short_toast', { n: r.got }));
+    _renderAddCardScreen();
+    if(r.got) _scrollCartIntoView();
+  }, function(e){
+    console.error('[QuickAdd] failed', e);
+    _cart.ids.slice().forEach(function(id){ if(!_cart.cards[id]) cartRemove(id); });   // drop half-loaded candidates
+    _cartUi.generating = false;
+    showToast(_describeTxError(e, 'load cards'));
+    _renderAddCardScreen();
+  });
+}
+function _renderAddCardScreen(){
+  var body = $('addCardBody'); if(!body) return;
+  var st = _mpState(), owned = _mpOwned();
+  var open = (st === 'open_pre' || st === 'open_session');
+  var c = _counters();
+  var full = open && !!c && (c.totalCardCount || 0) >= CATALOG_SIZE;
+  var attaching = !!(_myOrder && _myOrder.status === 'pending_next_session' && _market && _market.sessionId);
+  var msg = '';
+  if(st === 'not_ready' || st === 'loading') msg = t('mp_not_ready');
+  else if(st === 'locked_soon') msg = t('registration_locked_notice');
+  else if(st === 'locked_active') msg = t('mp_state_locked_active');
+  else if(st === 'locked_result') msg = t('mp_state_locked_result');
+  else if(full) msg = t('mp_state_full');
+  else if(attaching) msg = t('mp_registering');
+  else if(owned >= MAX_CARDS) msg = t('max_cards_toast', { n: MAX_CARDS });
+  var canAdd = !msg;
+  _mirrorClock(_clockText());
+  $('addCardOwned').textContent = t('add_owned_line', { n: owned, max: MAX_CARDS });
+  $('addCardClosed').classList.toggle('hidden', canAdd);
+  $('addCardClosedMsg').textContent = msg;
+  body.classList.toggle('hidden', !canAdd);
+  if(!canAdd) return;
+
+  var rem = _addRemaining();
+  if(rem > 0) _cartUi.qty = Math.max(1, Math.min(_cartUi.qty, rem));
+  var presets = [2, 4, 6, 10].filter(function(q){ return q <= MAX_CARDS; });
+  $('qtyPresets').innerHTML = presets.map(function(q){
+    return '<button type="button" class="qty-chip' + (q === _cartUi.qty ? ' on' : '') + '"' + (q > rem ? ' disabled' : '') + ' onclick="addQtySet(' + q + ')">' + q + '</button>';
+  }).join('');
+  var inp = $('addQty');
+  if(inp){ inp.disabled = rem <= 0; if(document.activeElement !== inp) inp.value = rem > 0 ? _cartUi.qty : ''; }
+  $('addQtyMinus').disabled = rem <= 0 || _cartUi.qty <= 1;
+  $('addQtyPlus').disabled = rem <= 0 || _cartUi.qty >= rem;
+  var hint = $('addCardHint');
+  hint.textContent = rem <= 0 ? t('max_cards_toast', { n: MAX_CARDS }) : '';
+  hint.classList.toggle('hidden', rem > 0);
+  var btn = $('addToCartBtn');
+  btn.disabled = _cartUi.generating || _cartBusy() || rem <= 0;
+  btn.innerHTML = _cartUi.generating ? '<span class="spinner"></span> ' + esc(t('add_generating')) : esc(t('add_to_cart_btn'));
+  _renderCartUI();
+}
+
 /* ───────────────────────────── REGISTRATION (join / leave) ─────────────── */
 // DIAGNOSTIC PATCH — the transaction below rejects with plain string codes
 // (SESSION_LOCKED, INSUFFICIENT_BALANCE, ...) on purpose, but any failure
@@ -2962,7 +3206,7 @@ function buyCards(){
   var uid = window._auth.currentUser.uid;
   var phone = (currentUser.phone || '');
   _mpJoinInProgress = true; _mp.buying = true; _cart.purchasing = true; _mp.pendingIds = picks.slice();
-  var btn = $('cartPurchaseBtn'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + t('processing');
+  _renderCartUI();   // cart panels show the spinner + lock their buttons (they read _cart.purchasing)
 
   var db = window._db, FV = firebase.firestore.FieldValue, FP = firebase.firestore.FieldPath;
   var marketRef = db.collection('settings').doc('cardMarket');
@@ -3032,7 +3276,7 @@ function buyCards(){
     _mpJoinInProgress = false; _mp.buying = false; _cart.purchasing = false; cartClear();
     setTimeout(function(){ _mp.pendingIds = []; }, 4000);
     showToast(t('mp_bought_toast', { n: picks.length }));
-    renderSessionMarketplace(); _renderSessionUI();
+    renderSessionMarketplace(); _renderSessionUI(); _onCartPurchased();
   }).catch(function(err){
     _mpJoinInProgress = false; _mp.buying = false; _cart.purchasing = false;
     setTimeout(function(){ _mp.pendingIds = []; }, 4000);
