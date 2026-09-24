@@ -3055,7 +3055,12 @@ function cartUiPurchase(){
   });
 }
 // Called by buyCards() after its transaction commits (the cart has just been cleared by it).
-function _onCartPurchased(){ _cartUi.notice = ''; closeCartSheet(); _cartRefreshAll(); }
+function _onCartPurchased(){
+  _cartUi.notice = ''; closeCartSheet();
+  // Bought from the ＋ tab -> send the player to Home (hero + countdown). They can come back to ＋ and add more until MAX_CARDS.
+  if(_currentScreen === 'addCard'){ navigateTo('home'); window.scrollTo(0, 0); }
+  _cartRefreshAll();
+}
 
 // ── Home toolbar: search toggle ──
 function mpToggleSearch(force){
