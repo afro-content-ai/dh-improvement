@@ -658,6 +658,7 @@ label.field-label{font-size:12.5px; color:var(--text-muted); font-weight:600; di
 .cart-price{font-size:9.5px; font-weight:700; text-align:center; color:var(--text-muted);}
 .cart-sum{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:10px;}
 .cart-sum b{font-family:var(--font-display); font-size:20px; color:var(--gold);}
+.cart-sum-breakdown{font-size:12.5px; margin-bottom:4px;}
 .cart-note{border-radius:var(--radius-md); padding:10px 12px; margin-bottom:10px; font-size:13px; font-weight:600; background:rgba(245,158,11,.14); color:var(--warning);}
 .cart-note-danger{background:rgba(239,68,68,.12); color:var(--danger);}
 .cart-actions{display:flex; gap:10px;}
@@ -1135,10 +1136,9 @@ const FIREBASE_CONFIG = {
 };
 const AUTH_EMAIL_DOMAIN = "dhbingo.local"; // synthetic email domain, never shown to players
 const CARD_PRICE = 10;          // ETB per card — FIXED, do not change
-const MAX_CARDS = 10;           // FIXED, do not change
+const MAX_CARDS = 20;           // FIXED, do not change. MUST equal MAX_USER_CARDS() in firestore.rules
 const JACKPOT_SHARE = 0.80;     // FIXED, do not change
 const LOCK_SECONDS = 60;        // registration locks this many seconds before start
-const JACKPOT_PER_CARD = 8;     // ETB of each 10 ETB card that goes to the jackpot (= CARD_PRICE * JACKPOT_SHARE). MUST equal firestore.rules
 const CATALOG_FIRST_ID = 10000; // permanent card catalog: Firestore cardCatalog/10000 ... cardCatalog/19999 (opaque IDs, never derived from the numbers)
 const CATALOG_SIZE = 10000;     // catalog size == maximum cards registered in one session
 const MP_PAGE_SIZE = 20;        // catalog cards shown per marketplace page (the app never loads all 10,000)
@@ -1146,6 +1146,22 @@ const RESULT_SECONDS = 15;      // result window: the next round's marketplace o
 const ACTIVATE_GRACE_SECONDS = 20; // how long the admin browser gets first right of way to auto-activate before any other online client may. MUST equal firestore.rules
 const MIN_DEPOSIT = 10;
 const MIN_WITHDRAWAL = 10;
+
+// Bulk-purchase pricing: the discount depends ONLY on how many cards are in ONE purchase batch.
+// Mirrors discountFor()/batchStake()/houseShare()/jackpotShare() in firestore.rules EXACTLY, but
+// these client copies are for DISPLAY only (cart summary, purchase button label) — the Firestore
+// rules independently recompute and enforce the real stake/jackpot/house numbers from the card
+// count alone, so the client can never control them (see STEP 5 of the pricing spec).
+function discountFor(n){
+  return n <= 3 ? 0
+       : n <= 7 ? 10
+       : n <= 11 ? 20
+       : n <= 15 ? 30
+       : 40; // n is always <= MAX_CARDS here
+}
+function batchStake(n){ return n * CARD_PRICE - discountFor(n); }
+function houseShareOf(amt){ return amt / 5; }                    // 20% — exact, see firestore.rules comment
+function jackpotShareOf(amt){ return amt - houseShareOf(amt); }  // 80%, computed as the remainder so it's invariant-safe
 
 /* ───────────────────────────── UTIL ────────────────────────────────────── */
 function $(id){ return document.getElementById(id); }
@@ -1280,7 +1296,7 @@ ti:{
   cart_title:'ጋሪኻ',
   cart_aria:'ጋሪ',
   cart_empty:'ጋሪኻ ባዶ እዩ።',
-  cart_total:'ጠቕላላ',
+  cart_total:'ጠቕላላ', cart_subtotal:'ንኡስ ድምር', cart_discount:'ቅናሽ',
   cart_remove:'ኣወግድ',
   cart_clear:'ኣጽሪ',
   cart_purchase_btn:'ግዛእ — {amt} ብር',
@@ -1371,7 +1387,7 @@ am:{
   cart_title:'ጋሪዎ',
   cart_aria:'ጋሪ',
   cart_empty:'ጋሪዎ ባዶ ነው።',
-  cart_total:'ጠቅላላ',
+  cart_total:'ጠቅላላ', cart_subtotal:'ንዑስ ድምር', cart_discount:'ቅናሽ',
   cart_remove:'አስወግድ',
   cart_clear:'አጽዳ',
   cart_purchase_btn:'ግዛ — {amt} ብር',
@@ -1462,7 +1478,7 @@ om:{
   cart_title:'Gaarii Kee',
   cart_aria:'Gaarii',
   cart_empty:'Gaariin kee duwwaadha.',
-  cart_total:'Waliigala',
+  cart_total:'Waliigala', cart_subtotal:'Gatii Guutuu', cart_discount:"Hir'isa",
   cart_remove:'Balleessi',
   cart_clear:'Haqi',
   cart_purchase_btn:'Bitadhu — Qarshii {amt}',
@@ -1553,7 +1569,7 @@ en:{
   cart_title:'Your Cart',
   cart_aria:'Cart',
   cart_empty:'Your cart is empty.',
-  cart_total:'Total',
+  cart_total:'Total', cart_subtotal:'Subtotal', cart_discount:'Discount',
   cart_remove:'Remove',
   cart_clear:'Clear',
   cart_purchase_btn:'Purchase — {amt} ETB',
@@ -2946,7 +2962,8 @@ function _cartPanelParts(){
   if(!n){
     return { body: '<div class="cart-empty"><div class="ic" aria-hidden="true">\uD83D\uDED2</div><div>' + esc(t('cart_empty')) + '</div></div>', foot: '' };
   }
-  var busy = _cartBusy(), total = n * CARD_PRICE, unloaded = false;
+  var busy = _cartBusy(), unloaded = false;
+  var subtotal = n * CARD_PRICE, discount = discountFor(n), total = subtotal - discount; // == batchStake(n)
   var items = _cart.ids.map(function(id){
     var c = _cart.cards[id];
     if(!c) unloaded = true;
@@ -2965,6 +2982,12 @@ function _cartPanelParts(){
   else if(unloaded || _cart.loading){ label = esc(t('mp_loading')); dis = true; }
   else { label = esc(t('cart_purchase_btn', { amt: fmtETB(total) })); dis = poor; }
   var foot =
+    (discount > 0 ?
+      '<div class="cart-sum cart-sum-breakdown"><span class="muted">' + esc(t('cart_subtotal')) + '</span>' +
+        '<span>' + fmtETB(subtotal) + ' ' + esc(t('currency_unit')) + '</span></div>' +
+      '<div class="cart-sum cart-sum-breakdown"><span class="muted">' + esc(t('cart_discount')) + '</span>' +
+        '<span>\u2212' + fmtETB(discount) + ' ' + esc(t('currency_unit')) + '</span></div>'
+      : '') +
     '<div class="cart-sum"><span class="muted">' + n + ' ' + esc(t('cards_suffix')) + '</span>' +
       '<span><span class="muted">' + esc(t('cart_total')) + '</span> <b>' + fmtETB(total) + ' ' + esc(t('currency_unit')) + '</b></span></div>' +
     (_cartUi.notice ? '<div class="cart-note" role="status"><b>' + esc(t('cart_avail_changed')) + '.</b> ' + esc(_cartUi.notice) + '</div>' : '') +
@@ -2990,7 +3013,7 @@ function _cartHomeGridHTML(){
 }
 function _renderCartUI(){
   if(typeof _cart === 'undefined' || !_cart || typeof _cartUi === 'undefined') return;
-  var n = _cart.ids.length, total = n * CARD_PRICE;
+  var n = _cart.ids.length, total = batchStake(n);
   var cnt = $('mpCartCount'); if(cnt){ cnt.textContent = n; cnt.classList.toggle('hidden', !n); }
   var cb = $('mpCartBtn'); if(cb){ cb.classList.toggle('has-items', n > 0); cb.setAttribute('aria-label', t('cart_aria') + ' (' + n + ')'); }
   var nb = $('navAddBadge'); if(nb){ nb.textContent = n; nb.classList.toggle('hidden', !n); }
@@ -3205,7 +3228,7 @@ function buyCards(){
   var st = _mpState();
   if(st !== 'open_pre' && st !== 'open_session'){ showToast(t('mp_closed_toast')); return; }
   if(picks.length + _mpOwned() > MAX_CARDS){ showToast(t('max_cards_toast', { n: MAX_CARDS })); return; }
-  var cost = picks.length * CARD_PRICE;
+  var cost = batchStake(picks.length);   // discount applies ONLY to this batch's card count — see discountFor()
   if((currentUser.balance || 0) < cost){ showToast(t('insufficient_balance_toast')); return; }
   if(picks.some(function(id){ return !_catalogCache[id]; })){ showToast(t('mp_loading')); return; }
   var uid = window._auth.currentUser.uid;
@@ -3252,9 +3275,11 @@ function buyCards(){
 
         var n = picks.length, ts = FV.serverTimestamp();
         var cardIds = (prev ? prev.cardIds : []).concat(picks);
+        var prevStake = prev ? prev.stake : 0;
+        var stake = prevStake + cost;   // cumulative, discount-aware — matches firestore.rules batchStake()
         var order = { uid: uid, phone: phone, roundId: roundId, sessionId: prev ? prev.sessionId : sessionId,
           status: prev ? prev.status : (sessionId ? 'assigned' : 'pending_next_session'),
-          cardIds: cardIds, ticketCount: cardIds.length, stake: cardIds.length * CARD_PRICE, lastBatch: picks.slice(),
+          cardIds: cardIds, ticketCount: cardIds.length, stake: stake, lastBatch: picks.slice(),
           purchaseSeq: prev ? (prev.purchaseSeq || 1) + 1 : 1, createdAt: prev ? prev.createdAt : ts, updatedAt: ts };
         if(prev && prev.attachedAt) order.attachedAt = prev.attachedAt;
 
@@ -3265,14 +3290,14 @@ function buyCards(){
         tx.update(sessionRef || marketRef, {
           totalCardCount: (counters.totalCardCount || 0) + n,
           playerCount: (counters.playerCount || 0) + (prev ? 0 : 1),
-          totalPot: (counters.totalPot || 0) + n * CARD_PRICE,
-          jackpot: (counters.jackpot || 0) + n * JACKPOT_PER_CARD });
+          totalPot: (counters.totalPot || 0) + cost,
+          jackpot: (counters.jackpot || 0) + jackpotShareOf(cost) });
         tx.update(userRef, { balance: (u.balance || 0) - cost });
         tx.update(houseRef, { balance: (hSnap.data().balance || 0) + cost });
         if(sessionRef){
           var prevP = pSnap.exists ? pSnap.data() : null;
           var snaps = (prevP ? prevP.cardNumbers : []).concat(picks.map(function(id){ return { cardId: id, numbers: _catalogCache[id].numbers }; }));
-          tx.set(playerRef, { uid: uid, phone: phone, roundId: roundId, ticketCount: cardIds.length, stake: cardIds.length * CARD_PRICE,
+          tx.set(playerRef, { uid: uid, phone: phone, roundId: roundId, ticketCount: cardIds.length, stake: stake,
             cardIds: cardIds, cardNumbers: snaps, joinedAt: prevP ? prevP.joinedAt : ts });
         }
       });
@@ -3349,7 +3374,7 @@ function cancelMyCards(){
           totalCardCount: (counters.totalCardCount || 0) - o.ticketCount,
           playerCount: (counters.playerCount || 0) - 1,
           totalPot: (counters.totalPot || 0) - o.stake,
-          jackpot: (counters.jackpot || 0) - o.ticketCount * JACKPOT_PER_CARD });
+          jackpot: (counters.jackpot || 0) - jackpotShareOf(o.stake) });
         tx.update(userRef, { balance: ((uSnap.data() || {}).balance || 0) + o.stake });
         tx.update(houseRef, { balance: (hSnap.data().balance || 0) - o.stake });
         if(playerRef) tx.delete(playerRef);
