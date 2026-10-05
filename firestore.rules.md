@@ -29,9 +29,18 @@ service cloud.firestore {
     //
     // LIMITS enforced HERE (not in the UI): 20 cards/user/round, 10,000 cards/session, 60 s lock,
     // no purchases unless the session is 'waiting' with more than LOCK_SECONDS remaining (or no
-    // session exists yet). Per-purchase pricing is tiered (see discountFor() below): cardCount * 10 ETB
-    // gross, minus a bulk discount based ONLY on that purchase's card count, 80% of the resulting
-    // stake into the jackpot and 20% to the house — never the flat "8 ETB/card" split of the old model.
+    // session exists yet). Per-purchase pricing: gross = cardCount * price, where price is 10 ETB before a
+    // session exists and the SESSION's own `cardValue` (5 | 10 | 30, validated at session create and
+    // immutable for non-admins) afterwards. Only at 10 ETB is a bulk discount applied (see discountFor()),
+    // based ONLY on that purchase's card count. The resulting stake is split 80% jackpot / 20% house —
+    // never the flat "8 ETB/card" split of the old model.
+    //
+    // REPRICED SESSIONS (cardValue 5 or 30): anything bought before the session existed was bought at the
+    // 10-ETB pre-session price and is NEVER repriced or attached. Such a session is created on a BRAND-NEW
+    // round (new reservation doc, all counters 0, `repricedFromRoundId` = the old round) in one request, so old
+    // pending orders can never attach (orderAttachOk also pins the round and cardValue 10). The admin client
+    // then refunds each old pending order at its own recorded `stake` (admin writes; one order per
+    // transaction, status flips to 'refunded' atomically with the wallet credit => never refunded twice).
     //
     // ─────────────────────────────────────────────────────────────────────────
     // SECURITY-RULES DOCUMENT-ACCESS BUDGET   (limits: 20 per request, 10 per operation)
@@ -64,6 +73,11 @@ service cloud.firestore {
 
     // ── constants ─────────────────────────────────────────────────────────
     function CARD_PRICE()        { return 10; }
+    // Session card values an admin may choose. CARD_PRICE() (10) is the default and the pre-session price.
+    function MAX_CARD_VALUE()    { return 30; }
+    function isCardValue(v)      { return v is int && (v == 5 || v == 10 || v == 30); }
+    // A session doc's card value. Sessions created before the field existed are standard 10-ETB sessions.
+    function cardValueOf(c)      { return c.get('cardValue', CARD_PRICE()); }
     function MAX_USER_CARDS()    { return 20; }
     function MAX_SESSION_CARDS() { return 10000; }
     function LOCK_SECONDS()      { return 60; }
@@ -115,34 +129,38 @@ service cloud.firestore {
     // ── pricing (0 document accesses) — derived from card count ONLY, never trusted from the client ──
     // Bulk discount for a single purchase, keyed only on how many cards are in THAT purchase.
     // isCardIdList() already bounds n to 1..MAX_USER_CARDS()(20), so every branch here is reachable.
-    function discountFor(n) {
-      return n <= 3  ? 0
+    // `v` is the card value in force (5 | 10 | 30). Quantity discounts exist ONLY at the standard 10 ETB.
+    function discountFor(n, v) {
+      return v != CARD_PRICE() ? 0
+           : n <= 3  ? 0
            : n <= 7  ? 10
            : n <= 11 ? 20
            : n <= 15 ? 30
            : 40;
     }
-    // The actual, authoritative stake for a purchase of n cards: gross (n * 10 ETB) minus the bulk
-    // discount. This — not n * CARD_PRICE() — is what must be debited, and what `stake` must equal.
-    function batchStake(n) { return n * CARD_PRICE() - discountFor(n); }
-    // 20% / 80% split of any ETB amount that is itself a sum of batchStake() values. Every discount
-    // tier above is a multiple of 10 ETB and CARD_PRICE() is 10, so every batchStake() — and any sum
-    // of them — is always an exact multiple of 10: houseShare()'s integer division never truncates,
-    // and jackpotShare() is computed as the remainder so totalPot == jackpot + houseShare ALWAYS holds
-    // exactly, with no floating-point rounding drift from multiplying by 0.8 / 0.2 directly.
+    // The actual, authoritative stake for a purchase of n cards at card value v: gross (n * v) minus the
+    // discount. This — not n * v — is what must be debited, and what `stake` must equal.
+    function stakeFor(n, v) { return n * v - discountFor(n, v); }
+    // Pre-session marketplace price (no session exists yet => always the standard 10 ETB).
+    function batchStake(n)  { return stakeFor(n, CARD_PRICE()); }
+    // 20% / 80% split of any ETB amount that is itself a sum of stakeFor() values. Every possible stake
+    // (n*5, n*10 minus a multiple of 10, n*30) is an exact multiple of 5 ETB, so houseShare()'s integer
+    // division never truncates, and jackpotShare() is computed as the remainder so
+    // totalPot == jackpot + houseShare ALWAYS holds exactly, with no floating-point rounding drift from
+    // multiplying by 0.8 / 0.2 directly.
     function houseShare(amt)   { return amt / 5; }
     function jackpotShare(amt) { return amt - houseShare(amt); }
 
     // ═════════════════════════════════════════════════════════════════════
     // users/{uid}
     // ═════════════════════════════════════════════════════════════════════
-    // A user may only LOWER their own balance (a purchase) by 1..(MAX_USER_CARDS()*CARD_PRICE()) ETB —
+    // A user may only LOWER their own balance (a purchase) by 1..(MAX_USER_CARDS()*MAX_CARD_VALUE()) ETB —
     // a loose sanity ceiling only. This is deliberately self-harm-only: the doc that actually enforces
     // "paid exactly batchStake(n) for n cards" is the counters doc (marketPurchaseOk / sessionPurchaseOk),
     // which compares this doc before/after. 0 accesses.
     function userDebitOk() {
       let d = resource.data.balance - request.resource.data.balance;
-      return d > 0 && d <= MAX_USER_CARDS() * CARD_PRICE() && request.resource.data.balance >= 0;
+      return d > 0 && d <= MAX_USER_CARDS() * MAX_CARD_VALUE() && request.resource.data.balance >= 0;
     }
     // A user may only RAISE their own balance by exactly the stake of THEIR order, and only in
     // the same request that DELETES that order (existsAfter). This closes the replay hole where a
@@ -274,13 +292,19 @@ service cloud.firestore {
     // request, getAfter = state AFTER it), so an order can never be written without the counters,
     // the reservations and (in-session) the player doc moving with it.
     // Accesses: get+getAfter(counters) 2 + get+getAfter(reservations) 2 [+ getAfter(player) 1 in-session].
-    function orderPurchaseLinks(a) {
+    // `prevStake` = the order's stake BEFORE this request (0 for a create). The price is read from the counters
+    // doc already fetched here (no extra access): pre-session = 10 ETB, in-session = the session's cardValue.
+    function orderPurchaseLinks(a, prevStake) {
       let n  = a.lastBatch.size();
       let c0 = get(pCounters(a.sessionId)).data;
       let c1 = getAfter(pCounters(a.sessionId)).data;
       let r0 = get(pResv(a.roundId)).data;
       let r1 = getAfter(pResv(a.roundId)).data;
-      return c0.roundId == a.roundId
+      let v  = a.sessionId == null ? CARD_PRICE() : cardValueOf(c0);
+      let cost = stakeFor(n, v);
+      return isCardValue(v)
+        && a.stake == prevStake + cost
+        && c0.roundId == a.roundId
         // state gate (defence in depth: the counters doc's own rule also enforces it)
         && (a.sessionId == null
               ? c0.sessionId == null
@@ -288,8 +312,8 @@ service cloud.firestore {
                   && request.time < c0.countdownEnd - duration.value(LOCK_SECONDS(), 's')))
         && c1.totalCardCount - c0.totalCardCount == n
         && c1.playerCount - c0.playerCount == (a.purchaseSeq == 1 ? 1 : 0)
-        && c1.totalPot - c0.totalPot == batchStake(n)
-        && c1.jackpot - c0.jackpot == jackpotShare(batchStake(n))
+        && c1.totalPot - c0.totalPot == cost
+        && c1.jackpot - c0.jackpot == jackpotShare(cost)
         && !r0.reserved.keys().hasAny(a.lastBatch)
         && r1.reserved.keys().hasAll(a.lastBatch)
         && (a.sessionId == null
@@ -300,9 +324,8 @@ service cloud.firestore {
       return orderShapeOk(orderId)
         && a.purchaseSeq == 1
         && a.cardIds == a.lastBatch
-        && a.stake == batchStake(a.lastBatch.size())
         && (a.sessionId == null ? a.status == 'pending_next_session' : a.status == 'assigned')
-        && orderPurchaseLinks(a);
+        && orderPurchaseLinks(a, 0);   // also enforces stake == this batch's stakeFor()
     }
     function orderAppendOk(orderId) {
       let b = resource.data;
@@ -312,9 +335,8 @@ service cloud.firestore {
         && a.createdAt == b.createdAt
         && a.cardIds == b.cardIds.concat(a.lastBatch)
         && !b.cardIds.hasAny(a.lastBatch)
-        && a.stake == b.stake + batchStake(a.lastBatch.size())
         && orderShapeOk(orderId)
-        && orderPurchaseLinks(a);
+        && orderPurchaseLinks(a, b.stake);   // also enforces stake == b.stake + this batch's stakeFor()
     }
     // pending_next_session -> assigned, done by the owner (self-heal) — admin uses isAdmin().
     // Access: get(session) = 1.
@@ -324,7 +346,9 @@ service cloud.firestore {
       let s = get(pSession(a.sessionId)).data;
       return b.status == 'pending_next_session' && b.sessionId == null
         && a.status == 'assigned' && a.sessionId is string
-        && s.roundId == b.roundId && s.status == 'waiting';
+        // pre-session orders were bought at 10 ETB: they may only join a standard 10-ETB session of the SAME round
+        // (5 / 30 ETB sessions live on a new round and refund the old orders instead — they are never repriced)
+        && s.roundId == b.roundId && s.status == 'waiting' && cardValueOf(s) == CARD_PRICE();
     }
     // Deleting an order = cancel & refund. Forces the counters back down by exactly this order,
     // the reserved keys released, and (in-session) the player doc deleted.
@@ -456,14 +480,17 @@ service cloud.firestore {
       let b = resource.data;
       let a = request.resource.data;
       let n = a.totalCardCount - b.totalCardCount;
+      let v = cardValueOf(b);   // the SESSION's price — immutable for non-admins (affectedKeys below), so never client-controlled
+      let cost = stakeFor(n, v);
       let paid = get(pUser(request.auth.uid)).data.balance - getAfter(pUser(request.auth.uid)).data.balance;
       return a.diff(b).affectedKeys().hasOnly(['totalCardCount','playerCount','totalPot','jackpot'])
+        && isCardValue(v)
         && n >= 1 && n <= MAX_USER_CARDS()
         && a.totalCardCount <= MAX_SESSION_CARDS()
         && (a.playerCount - b.playerCount == 0 || a.playerCount - b.playerCount == 1)
-        && a.totalPot - b.totalPot == batchStake(n)
-        && a.jackpot - b.jackpot == jackpotShare(batchStake(n))
-        && paid == batchStake(n);
+        && a.totalPot - b.totalPot == cost
+        && a.jackpot - b.jackpot == jackpotShare(cost)
+        && paid == cost;
     }
     // IN-SESSION release (leave & refund) while the session is still 'waiting'.
     // Accesses: get(order) + existsAfter(order) = 2.
@@ -528,21 +555,32 @@ service cloud.firestore {
     // Creating a session consumes the forming round: it must carry that round's id and totals, and
     // the market doc must switch to this session in the SAME request (no half-created state).
     // Accesses: get+getAfter(market) = 2 (+2 for isAdmin, evaluated first).
+    //   cardValue 10    : the session inherits the round's id and running totals (pre-session orders attach to it).
+    //   cardValue 5 | 30: pre-session purchases were made at 10 ETB and are refunded, never repriced or counted, so the
+    //                     session starts on a NEW round (reservation doc created in the same request, absent before /
+    //                     present after) with every counter at 0, and records the old round in repricedFromRoundId.
+    //                     Accesses: +2 (exists/existsAfter reservations) => 6 for the session-create op.
     function sessionCreateLinksOk(sessionId) {
       let a = request.resource.data;
       let m0 = get(pMarket()).data;
       let m1 = getAfter(pMarket()).data;
       return m0.sessionId == null && m1.sessionId == sessionId
-        && a.roundId == m0.roundId && m1.roundId == m0.roundId
-        && a.totalCardCount == m0.totalCardCount && a.playerCount == m0.playerCount
-        && a.totalPot == m0.totalPot && a.jackpot == m0.jackpot;
+        && (a.cardValue == CARD_PRICE()
+              ? (a.roundId == m0.roundId && m1.roundId == m0.roundId
+                  && a.totalCardCount == m0.totalCardCount && a.playerCount == m0.playerCount
+                  && a.totalPot == m0.totalPot && a.jackpot == m0.jackpot)
+              : (isRoundId(a.roundId) && a.roundId != m0.roundId && m1.roundId == a.roundId
+                  && a.repricedFromRoundId == m0.roundId
+                  && !exists(pResv(a.roundId)) && existsAfter(pResv(a.roundId))
+                  && a.totalCardCount == 0 && a.playerCount == 0 && a.totalPot == 0 && a.jackpot == 0
+                  && m1.totalCardCount == 0 && m1.playerCount == 0 && m1.totalPot == 0 && m1.jackpot == 0));
     }
 
     match /sessions/{sessionId} {
       allow read: if isLoggedIn();
       allow create: if isAdmin()
         && request.resource.data.keys().hasAll([
-          'status','sessionNumber','pattern','totalPot','jackpot','playerCount','totalCardCount','roundId',
+          'status','sessionNumber','pattern','totalPot','jackpot','playerCount','totalCardCount','roundId','cardValue',
           'deckSeed','calledNumbers','currentNumber','lastSequence',
           'callerToken','callerUid','countdownEnd','createdAt',
           'startTime','endTime','resultEndAt','winnerId','winnerName',
@@ -555,6 +593,7 @@ service cloud.firestore {
         && request.resource.data.winnerCardId == null
         && request.resource.data.winnerCardNumbers == null
         && request.resource.data.disqualifiedUids == []
+        && isCardValue(request.resource.data.cardValue)
         && request.resource.data.sessionNumber is int
         && request.resource.data.sessionNumber > 0
         && request.resource.data.deckSeed is int

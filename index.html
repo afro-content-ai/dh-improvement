@@ -1137,6 +1137,7 @@ const FIREBASE_CONFIG = {
 const AUTH_EMAIL_DOMAIN = "dhbingo.local"; // synthetic email domain, never shown to players
 const CARD_PRICE = 10;          // ETB per card — FIXED, do not change
 const MAX_CARDS = 20;           // FIXED, do not change. MUST equal MAX_USER_CARDS() in firestore.rules
+const CARD_VALUES = [5, 10, 30]; // ETB per card an admin may choose for a session (default CARD_PRICE = 10). MUST equal isCardValue() in firestore.rules
 const JACKPOT_SHARE = 0.80;     // FIXED, do not change
 const LOCK_SECONDS = 60;        // registration locks this many seconds before start
 const CATALOG_FIRST_ID = 10000; // permanent card catalog: Firestore cardCatalog/10000 ... cardCatalog/19999 (opaque IDs, never derived from the numbers)
@@ -1152,14 +1153,24 @@ const MIN_WITHDRAWAL = 10;
 // these client copies are for DISPLAY only (cart summary, purchase button label) — the Firestore
 // rules independently recompute and enforce the real stake/jackpot/house numbers from the card
 // count alone, so the client can never control them (see STEP 5 of the pricing spec).
-function discountFor(n){
+// `v` = the session's card value (5 | 10 | 30). Quantity discounts exist ONLY at the standard 10-ETB card value;
+// 5 and 30 ETB sessions have no discount. Omitted `v` means the standard price (the pre-session marketplace price).
+function discountFor(n, v){
+  if((v == null ? CARD_PRICE : v) !== CARD_PRICE) return 0;
   return n <= 3 ? 0
        : n <= 7 ? 10
        : n <= 11 ? 20
        : n <= 15 ? 30
        : 40; // n is always <= MAX_CARDS here
 }
-function batchStake(n){ return n * CARD_PRICE - discountFor(n); }
+function stakeFor(n, v){ v = (v == null ? CARD_PRICE : v); return n * v - discountFor(n, v); }   // gross (n * v) minus discount
+function batchStake(n, v){ return stakeFor(n, v); }
+// Card value of a session doc. Sessions created before this field existed are standard 10-ETB sessions;
+// returns null for a value that is not one of CARD_VALUES (corrupt doc -> callers fail closed).
+function sessionCardValue(sd){
+  if(!sd || sd.cardValue == null) return CARD_PRICE;
+  return CARD_VALUES.indexOf(sd.cardValue) !== -1 ? sd.cardValue : null;
+}
 function houseShareOf(amt){ return amt / 5; }                    // 20% — exact, see firestore.rules comment
 function jackpotShareOf(amt){ return amt - houseShareOf(amt); }  // 80%, computed as the remainder so it's invariant-safe
 
@@ -1264,7 +1275,7 @@ ti:{
   mp_next:'ዝቕጽል ›', mp_goto_ph:'ቁጽሪ ካርቴላ', mp_go:'ኺድ',
   mp_goto_invalid:'ካብ 10000 ክሳብ 19999 ዝኾነ ቁጽሪ ካርቴላ ኣእትዉ።', mp_taken:'ተወሲዱ', mp_yours:'ናትካ',
   mp_page_line:'ካርቴላ {a}–{b}', mp_card_taken_toast:'ካርቴላ {ids} ሕጂ ብኻልእ ተጻዋታይ ተወሲዱ።', mp_closed_toast:'ምዝገባ ካርቴላ ሕጂ ተዓጽዩ ኣሎ።',
-  mp_attaching_toast:'ካርቴላታትካ ናብ ክፍለ-ግዜ ይምዝገቡ ኣለዉ — ቁሩብ ጸኒሕካ ደጊምካ ፈትን።', mp_registering:'ካርቴላታት ይምዝገብ ኣሎ…', mp_full_toast:'ዝተረፉ ካርቴላታት ኣይኣክሉን።',
+  mp_price_changed_toast:'ዋጋ ካርቴላ ተቐይሩ ኣሎ — በጃኹም ዳግማይ ርኣዩን ደጊምኩም ፈትኑን።', mp_attaching_toast:'ካርቴላታትካ ናብ ክፍለ-ግዜ ይምዝገቡ ኣለዉ — ቁሩብ ጸኒሕካ ደጊምካ ፈትን።', mp_registering:'ካርቴላታት ይምዝገብ ኣሎ…', mp_full_toast:'ዝተረፉ ካርቴላታት ኣይኣክሉን።',
   mp_bought_toast:'{n} ካርቴላ ንዓኻ ተሓዊዙ!', mp_denied_toast:'ኣይተዛዘመን — ካርቴላ ሕጂ ተወሲዱ ወይ ምዝገባ ተዓጽዩ ክኸውን ይኽእል። በጃኹም ዝርዝር ኣሓድሱ።', mp_loading:'ካርቴላታት ይጻዓን ኣለዉ…',
   mp_cards_total:'ካርቴላታት', mp_next_round_soon:'ገባያ ካርቴላ ናይ ቀጻሊ ክፍለ-ግዜ ድሕሪ እቲ ናይ ውጽኢት ግዜ ባዕሉ ይኽፈት።', mp_resume_settle:'ተመላሽ ገንዘብ ዳግም ፈትን',
   mp_admin_ready:'ገባያ ካርቴላ ንቀጻሊ ክፍለ-ግዜ ክፉት እዩ። ድሉው ክትከውን ከለኻ ክፍለ-ግዜ ፍጠር።', mp_legacy_warning:'ናይ ቀደም ዓይነት ክፍለ-ግዜ ገና ይሰርሕ ኣሎ። ቅድሚ ሓዲሽ ገባያ ካርቴላ ወድእዎ ወይ ኣብጽሕዎ።',
@@ -1355,7 +1366,7 @@ am:{
   mp_next:'ቀጣይ ›', mp_goto_ph:'የካርቴላ ቁጥር', mp_go:'ሂድ',
   mp_goto_invalid:'ከ10000 እስከ 19999 ያለ የካርቴላ ቁጥር ያስገቡ።', mp_taken:'ተወስዷል', mp_yours:'የእርስዎ',
   mp_page_line:'ካርቴላ {a}–{b}', mp_card_taken_toast:'ካርቴላ {ids} አሁን በሌላ ተጫዋች ተወስዷል።', mp_closed_toast:'የካርቴላ ምዝገባ አሁን ተዘግቷል።',
-  mp_attaching_toast:'ካርቴላዎችዎ ወደ ክፍለ ጊዜው እየተመዘገቡ ነው — ትንሽ ቆይተው ይሞክሩ።', mp_registering:'ካርቴላዎች እየተመዘገቡ ነው…', mp_full_toast:'የቀሩት ካርቴላዎች በቂ አይደሉም።',
+  mp_price_changed_toast:'የካርቴላ ዋጋ ተቀይሯል — እባክዎ ደግመው ይመልከቱና ይሞክሩ።', mp_attaching_toast:'ካርቴላዎችዎ ወደ ክፍለ ጊዜው እየተመዘገቡ ነው — ትንሽ ቆይተው ይሞክሩ።', mp_registering:'ካርቴላዎች እየተመዘገቡ ነው…', mp_full_toast:'የቀሩት ካርቴላዎች በቂ አይደሉም።',
   mp_bought_toast:'{n} ካርቴላ ለእርስዎ ተይዟል!', mp_denied_toast:'ማጠናቀቅ አልተቻለም — ካርቴላ አሁን ተወስዶ ወይም ምዝገባ ተዘግቶ ሊሆን ይችላል። እባክዎ ዝርዝሩን ያድሱ።', mp_loading:'ካርቴላዎች እየተጫኑ ነው…',
   mp_cards_total:'ካርቴላዎች', mp_next_round_soon:'የቀጣዩ ክፍለ ጊዜ የካርቴላ ገበያ ከውጤት ጊዜ በኋላ በራሱ ይከፈታል።', mp_resume_settle:'ገንዘብ መመለስን እንደገና ሞክር',
   mp_admin_ready:'የካርቴላ ገበያ ለቀጣዩ ክፍለ ጊዜ ክፍት ነው። ዝግጁ ሲሆኑ ክፍለ ጊዜውን ይፍጠሩ።', mp_legacy_warning:'የድሮ ዓይነት ክፍለ ጊዜ አሁንም እየሄደ ነው። አዲሱ የካርቴላ ገበያ ከመጀመሩ በፊት ያጠናቅቁት ወይም ያስገድዱ።',
@@ -1446,7 +1457,7 @@ om:{
   mp_next:'Itti aanu ›', mp_goto_ph:'Lakk. kaardii', mp_go:'Deemi',
   mp_goto_invalid:'Lakkoofsa kaardii 10000 hanga 19999 galchaa.', mp_taken:'Fudhatameera', mp_yours:'Kan kee',
   mp_page_line:'Kaardii {a}–{b}', mp_card_taken_toast:'Kaardiin {ids} amma taphataa biraatiin fudhatameera.', mp_closed_toast:'Galmeen kaardii amma cufameera.',
-  mp_attaching_toast:'Kaardiin kee marsaa keessatti galmaa’aa jira — yeroo muraasa booda yaali.', mp_registering:'Kaardiin galmaa’aa jira…', mp_full_toast:'Kaardiin hafan hin gahan.',
+  mp_price_changed_toast:'Gatiin kaardii jijjiirameera — maaloo irra deebi’ii ilaalaa yaalaa.', mp_attaching_toast:'Kaardiin kee marsaa keessatti galmaa’aa jira — yeroo muraasa booda yaali.', mp_registering:'Kaardiin galmaa’aa jira…', mp_full_toast:'Kaardiin hafan hin gahan.',
   mp_bought_toast:'Kaardiin {n} siif qabameera!', mp_denied_toast:'Xumuruu hin dandeenye — kaardiin amma fudhatamee ykn galmeen cufamee jiraachuu danda’a. Maaloo tarreeffama haaromsaa.', mp_loading:'Kaardiin fe’aa jira…',
   mp_cards_total:'Kaardiiwwan', mp_next_round_soon:'Gabaan kaardii marsaa itti aanu yeroo bu’aa booda ofumaan banama.', mp_resume_settle:'Deebisuu irra deebi’ii yaali',
   mp_admin_ready:'Gabaan kaardii marsaa itti aanuuf banaadha. Yeroo qophooftan marsaa uumaa.', mp_legacy_warning:'Marsaan gosa duraa ammayyuu adeemaa jira. Gabaan kaardii haaraan osoo hin jalqabin dura xumuraa ykn cabsaa.',
@@ -1537,7 +1548,7 @@ en:{
   mp_next:'Next ›', mp_goto_ph:'Card no.', mp_go:'Go',
   mp_goto_invalid:'Enter a card number from 10000 to 19999.', mp_taken:'Taken', mp_yours:'Yours',
   mp_page_line:'Cards {a}–{b}', mp_card_taken_toast:'Card {ids} was just taken by another player.', mp_closed_toast:'Card registration is closed right now.',
-  mp_attaching_toast:'Your cards are being added to the round — try again in a moment.', mp_registering:'Adding your cards…', mp_full_toast:'Not enough cards left.',
+  mp_price_changed_toast:'The card price has changed — please review the new price and try again.', mp_attaching_toast:'Your cards are being added to the round — try again in a moment.', mp_registering:'Adding your cards…', mp_full_toast:'Not enough cards left.',
   mp_bought_toast:'{n} card(s) reserved for you!', mp_denied_toast:'Could not complete that — a card may have just been taken, or registration just closed. Please refresh the list.', mp_loading:'Loading cards…',
   mp_cards_total:'Cards', mp_next_round_soon:'The next round’s card marketplace opens automatically after the result window.', mp_resume_settle:'Retry refunds',
   mp_admin_ready:'The card marketplace is open for the next round. Create the session when you are ready.', mp_legacy_warning:'An old-style round is still running. Finish or force-end it before the new card marketplace can start.',
@@ -2369,6 +2380,13 @@ function _dropTakenSelections(){
 }
 // which counters apply: the market doc before a session exists, the session doc afterwards
 function _counters(){ return (_market && _market.sessionId) ? _sessionData : _market; }
+// Display-only price per card: the live session's cardValue once a session exists, else the standard pre-session price.
+// buyCards() never trusts this — it recomputes the price from the session doc inside the transaction.
+function _curCardValue(){
+  if(!_market || !_market.sessionId || !_sessionData || _activeSessionId !== _market.sessionId) return CARD_PRICE;
+  var v = sessionCardValue(_sessionData);
+  return v == null ? CARD_PRICE : v;
+}
 // The marketplace states (A-F of the spec):
 //  not_ready / loading | open_pre (no session yet) | open_session (waiting, > LOCK_SECONDS left)
 //  locked_soon (waiting, <= LOCK_SECONDS) | locked_active (running) | locked_result (finished, before the next round opens)
@@ -2963,7 +2981,8 @@ function _cartPanelParts(){
     return { body: '<div class="cart-empty"><div class="ic" aria-hidden="true">\uD83D\uDED2</div><div>' + esc(t('cart_empty')) + '</div></div>', foot: '' };
   }
   var busy = _cartBusy(), unloaded = false;
-  var subtotal = n * CARD_PRICE, discount = discountFor(n), total = subtotal - discount; // == batchStake(n)
+  var pv = _curCardValue();
+  var subtotal = n * pv, discount = discountFor(n, pv), total = subtotal - discount; // == batchStake(n, pv)
   var items = _cart.ids.map(function(id){
     var c = _cart.cards[id];
     if(!c) unloaded = true;
@@ -2972,7 +2991,7 @@ function _cartPanelParts(){
       (_cart.random[id] ? '<span class="cart-rnd" role="img" aria-label="' + esc(t('cart_random_tag')) + '">\uD83C\uDFB2</span>' : '') +
       '<div class="card-id">' + esc(t('card_label')) + ' ' + esc(id) + '</div>' +
       '<div class="mini-grid">' + _miniCells(c ? c.numbers : null) + '</div>' +
-      '<div class="cart-price">' + fmtETB(CARD_PRICE) + ' ' + esc(t('currency_unit')) + '</div></div>';
+      '<div class="cart-price">' + fmtETB(pv) + ' ' + esc(t('currency_unit')) + '</div></div>';
   }).join('');
   var bal = (currentUser && currentUser.balance) || 0;
   var poor = bal < total;
@@ -3013,7 +3032,7 @@ function _cartHomeGridHTML(){
 }
 function _renderCartUI(){
   if(typeof _cart === 'undefined' || !_cart || typeof _cartUi === 'undefined') return;
-  var n = _cart.ids.length, total = batchStake(n);
+  var n = _cart.ids.length, total = batchStake(n, _curCardValue());
   var cnt = $('mpCartCount'); if(cnt){ cnt.textContent = n; cnt.classList.toggle('hidden', !n); }
   var cb = $('mpCartBtn'); if(cb){ cb.classList.toggle('has-items', n > 0); cb.setAttribute('aria-label', t('cart_aria') + ' (' + n + ')'); }
   var nb = $('navAddBadge'); if(nb){ nb.textContent = n; nb.classList.toggle('hidden', !n); }
@@ -3210,7 +3229,7 @@ function _describeTxError(err, action){
 function _mpErrorMessage(err, action){
   var code = (typeof err === 'string') ? err : (err && err.message);
   var map = { LOCKED:'mp_closed_toast', SESSION_NOT_FOUND:'mp_closed_toast', ORDER_CLOSED:'mp_closed_toast', INSUFFICIENT_BALANCE:'insufficient_balance_toast',
-    MAX_CARDS:'max_cards_toast', FULL:'mp_full_toast', ATTACHING:'mp_attaching_toast', HOUSE_NOT_READY:'err_house_not_ready', MARKET_NOT_READY:'mp_not_ready',
+    MAX_CARDS:'max_cards_toast', FULL:'mp_full_toast', ATTACHING:'mp_attaching_toast', PRICE_CHANGED:'mp_price_changed_toast', BAD_CARD_VALUE:'mp_closed_toast', HOUSE_NOT_READY:'err_house_not_ready', MARKET_NOT_READY:'mp_not_ready',
     NOT_REGISTERED:'err_not_registered', SESSION_ACTIVE:'err_leave_session_active' };
   if(map[code]) return t(map[code], { n: MAX_CARDS });
   if(err && err.code === 'permission-denied') return t('mp_denied_toast');
@@ -3228,8 +3247,8 @@ function buyCards(){
   var st = _mpState();
   if(st !== 'open_pre' && st !== 'open_session'){ showToast(t('mp_closed_toast')); return; }
   if(picks.length + _mpOwned() > MAX_CARDS){ showToast(t('max_cards_toast', { n: MAX_CARDS })); return; }
-  var cost = batchStake(picks.length);   // discount applies ONLY to this batch's card count — see discountFor()
-  if((currentUser.balance || 0) < cost){ showToast(t('insufficient_balance_toast')); return; }
+  var estCost = batchStake(picks.length, _curCardValue());   // what the cart showed; the transaction recomputes the real price from the session doc and refuses on mismatch
+  if((currentUser.balance || 0) < estCost){ showToast(t('insufficient_balance_toast')); return; }
   if(picks.some(function(id){ return !_catalogCache[id]; })){ showToast(t('mp_loading')); return; }
   var uid = window._auth.currentUser.uid;
   var phone = (currentUser.phone || '');
@@ -3262,6 +3281,11 @@ function buyCards(){
           counters = sSnap.data();
           if(counters.status !== 'waiting' || counters.countdownEnd.toMillis() - Date.now() <= LOCK_SECONDS * 1000) return Promise.reject('LOCKED');
         } else { counters = m; }
+        // authoritative price: pre-session = standard 10 ETB; in-session = THIS session's cardValue (never the client's cache)
+        var price = sessionRef ? sessionCardValue(counters) : CARD_PRICE;
+        if(price == null) return Promise.reject('BAD_CARD_VALUE');
+        var cost = stakeFor(picks.length, price);   // discount applies ONLY to this batch's card count, and only at 10 ETB — see discountFor()
+        if(cost !== estCost) return Promise.reject('PRICE_CHANGED');   // the price moved under the cart (e.g. a session was just created) -> never charge more than was shown
         var reserved = resSnap.data().reserved || {};
         var taken = picks.filter(function(id){ return reserved[id]; });
         if(taken.length){ var te = new Error('CARD_TAKEN'); te.takenIds = taken; return Promise.reject(te); }
@@ -3403,6 +3427,7 @@ function _attachOneOrder(sessionId, roundId, uid, cardIds){
         var od = r[0].data(), sd = r[1].data();
         if(od.status !== 'pending_next_session' || od.sessionId) return 'SKIP';
         if(sd.status !== 'waiting' || sd.roundId !== od.roundId) return 'SKIP';
+        if(sessionCardValue(sd) !== CARD_PRICE) return 'SKIP';   // 10-ETB pre-session purchases may only ever attach to a 10-ETB session (others are refunded, never repriced)
         if(!od.cardIds.every(function(id){ return _catalogCache[id]; })) return 'SKIP';
         tx.update(orderRef, { status: 'assigned', sessionId: sessionId, attachedAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp() });
         tx.set(playerRef, { uid: uid, phone: od.phone || '', roundId: od.roundId, ticketCount: od.ticketCount, stake: od.stake, cardIds: od.cardIds,
@@ -3416,6 +3441,7 @@ function _maybeSelfAttach(){
   if(_attachingOwn || !_market || !_market.sessionId || !_myOrder) return;
   if(_myOrder.status !== 'pending_next_session' || _myOrder.sessionId) return;
   if(!_sessionData || _activeSessionId !== _market.sessionId || _sessionData.status !== 'waiting') return;
+  if(sessionCardValue(_sessionData) !== CARD_PRICE) return;
   _attachingOwn = true;
   _attachOneOrder(_market.sessionId, _myOrder.roundId, window._auth.currentUser.uid, _myOrder.cardIds)
     .catch(function(e){ console.error('[Attach] self-attach failed (the admin browser will retry)', e); })
@@ -3443,6 +3469,49 @@ function _adminAttachPending(sessionId, roundId){
     });
   }
   return pass().then(function(left){ _adminAttachBusy = false; return left; }, function(e){ _adminAttachBusy = false; throw e; });
+}
+
+// REPRICED SESSIONS (card value 5 or 30 ETB): everything bought before the session existed was bought at the 10-ETB
+// pre-session price and is NOT repriced. _adminCreateSession() starts such a session on a brand-new round (fresh reservation
+// doc, zeroed counters) and records the old round in session.repricedFromRoundId, so the old purchases can never attach to it.
+// Each old pending order is then refunded at its own recorded stake, one order per transaction (_refundOneOrder, strict mode):
+// the order flips to 'refunded' in the same transaction as the wallet credit / house debit, so it can never be refunded twice,
+// and a re-run after a crash simply skips what is already done. Returns the number still pending (0 = done, -1 = a pass is running).
+var _repriceBusy = false, _repriceNextTry = 0;
+function _adminRefundRepricedOrders(sessionId, oldRoundId){
+  if(_repriceBusy) return Promise.resolve(-1);
+  _repriceBusy = true;
+  var db = window._db, passes = 0;
+  function pass(){
+    return db.collection('cardOrders').where('roundId', '==', oldRoundId).where('status', '==', 'pending_next_session').limit(100).get().then(function(qs){
+      var mine = [];
+      qs.forEach(function(doc){ var od = doc.data(); if(od.roundId === oldRoundId && !od.sessionId) mine.push(od); });
+      if(!mine.length) return 0;
+      if(++passes > 40) return mine.length;
+      var refunded = 0, chain = Promise.resolve();
+      for(var i = 0; i < mine.length; i += 8){
+        (function(slice){ chain = chain.then(function(){ return Promise.all(slice.map(function(o){
+          return _refundOneOrder(sessionId, o.uid, oldRoundId, 'session_reprice', true).then(function(res){ if(res === 'REFUNDED') refunded++; });
+        })); }); })(mine.slice(i, i + 8));
+      }
+      return chain.then(function(){ return refunded ? pass() : mine.length; });   // nothing refundable this pass -> stop, report what is left
+    });
+  }
+  return pass().then(function(left){ _repriceBusy = false; return left; }, function(e){ _repriceBusy = false; throw e; });
+}
+function _adminRunRepriceRefunds(sessionId, oldRoundId){
+  return _adminRefundRepricedOrders(sessionId, oldRoundId).then(function(left){
+    if(left === 0) return window._db.collection('sessions').doc(sessionId).update({ repriceRefundsDone: true });
+  }).catch(function(e){ console.error('[Reprice] refund sweep failed (the admin browser retries automatically)', e); });
+}
+// Admin browser safety net: if the sweep was interrupted (tab closed mid-way) resume it, at most once per 30 s, until the
+// session carries repriceRefundsDone. Cheap no-op for every other session.
+function _adminEnsureRepriceRefunds(){
+  var s = _sessionData;
+  if(!_isAdminUser || _repriceBusy || !s || !_activeSessionId || !s.repricedFromRoundId || s.repriceRefundsDone) return;
+  if(Date.now() < _repriceNextTry) return;
+  _repriceNextTry = Date.now() + 30000;
+  _adminRunRepriceRefunds(_activeSessionId, s.repricedFromRoundId);
 }
 
 // ROUND ADVANCE: once the round is over (ended/force_ended), settlement is finished and the result window has passed, ANY open
@@ -4153,7 +4222,10 @@ function _sweepRefunds(sessionId, reason){
   });
 }
 // One refund = one transaction (5 documents; the Security Rules budget assumes exactly this - never batch two players together).
-function _refundOneOrder(sessionId, uid, roundId, reason){
+// `onlyPreSession` (repriced-session sweep): refund ONLY an order that is still 'pending_next_session' with no session attached.
+// The refund is always the order's own recorded stake (what was actually debited) — never recomputed from any price.
+// Resolves 'REFUNDED' | 'SKIP' (nothing to do / already refunded) | 'FAIL'.
+function _refundOneOrder(sessionId, uid, roundId, reason, onlyPreSession){
   var db = window._db, FV = firebase.firestore.FieldValue;
   var orderRef = db.collection('cardOrders').doc(roundId + '_' + uid);
   var playerRef = db.collection('sessions').doc(sessionId).collection('players').doc(uid);
@@ -4161,17 +4233,21 @@ function _refundOneOrder(sessionId, uid, roundId, reason){
   var houseRef = db.collection('settings').doc('house');
   return db.runTransaction(function(tx){
     return Promise.all([tx.get(orderRef), tx.get(playerRef), tx.get(userRef), tx.get(houseRef)]).then(function(r){
-      if(!r[0].exists) return;
+      if(!r[0].exists) return 'SKIP';
       var o = r[0].data();
-      if(o.status !== 'pending_next_session' && o.status !== 'assigned') return;   // already refunded by a previous/parallel pass
-      if(!r[3].exists || !r[2].exists){ console.error('[Refund] user or settings/house missing - cannot refund', uid); return; }
+      if(o.status !== 'pending_next_session' && o.status !== 'assigned') return 'SKIP';   // already refunded by a previous/parallel pass
+      if(onlyPreSession && (o.status !== 'pending_next_session' || o.sessionId)) return 'SKIP';
+      if(!r[3].exists || !r[2].exists){ console.error('[Refund] user or settings/house missing - cannot refund', uid); return 'FAIL'; }
       tx.update(userRef, { balance: (r[2].data().balance || 0) + o.stake });
       tx.update(houseRef, { balance: (r[3].data().balance || 0) - o.stake });
-      tx.set(db.collection('refunds').doc(), { uid: uid, sessionId: sessionId, amount: o.stake, reason: reason, createdAt: FV.serverTimestamp() });
+      var rd = { uid: uid, sessionId: sessionId, amount: o.stake, reason: reason, createdAt: FV.serverTimestamp() };
+      if(onlyPreSession){ rd.orderRoundId = roundId; rd.cardCount = o.ticketCount; }
+      tx.set(db.collection('refunds').doc(), rd);
       tx.update(orderRef, { status: 'refunded', updatedAt: FV.serverTimestamp() });
       if(r[1].exists) tx.delete(playerRef);
+      return 'REFUNDED';
     });
-  }).catch(function(e){ console.error('[Refund] failed for', uid, e); });
+  }).catch(function(e){ console.error('[Refund] failed for', uid, e); return 'FAIL'; });
 }
 // Admin: re-run a refund sweep that was interrupted (settlementInProgress stuck on true).
 function adminResumeSettlement(){
@@ -4222,7 +4298,8 @@ function _adminTryActivate(){
   var sid = _activeSessionId, roundId = _sessionData.roundId;
   var ref = window._db.collection('sessions').doc(sid);
   // never start a round while somebody's paid-for cards are still waiting to be attached to it
-  var attach = roundId ? _adminAttachPending(sid, roundId) : Promise.resolve(0);
+  var attach = (roundId && sessionCardValue(_sessionData) === CARD_PRICE) ? _adminAttachPending(sid, roundId) : Promise.resolve(0);
+  _adminEnsureRepriceRefunds();   // repriced session: resume the old-round refunds in the background (they never block the start)
   attach.then(function(left){
     if(left !== 0){ _activateNextTry = Date.now() + 3000; return; }      // still attaching / a pass is running: try again in a few seconds
     return window._db.runTransaction(function(tx){
@@ -4276,6 +4353,7 @@ function _adminTerminalNoteHTML(d){
   return '<div class="card" style="margin-top:14px;"><div class="muted" style="font-size:12.5px;">' + t('mp_next_round_soon') + '</div></div>';
 }
 function _renderAdminSessionTab(){
+  _adminEnsureRepriceRefunds();
   if(_adminActiveTab!=='session') return;
   var host = $('adminTabContent');
   var d = _sessionData;
@@ -4308,6 +4386,7 @@ function _renderAdminSessionTab(){
       '<div class="row between"><b>ክፍለ-ግዜ ቁ.'+d.sessionNumber+'</b><span class="pill status-'+(d.status==='waiting'?'waiting':d.status==='active'?'active':'ended')+'">'+statusLabel+'</span></div>'+
       '<div class="stack" style="margin-top:10px; font-size:13.5px;">'+
         '<div class="row between"><span class="muted">ኣገባብ ዓወት</span><b>'+esc((PATTERN_DEFINITIONS[d.pattern.type]||{}).name||d.pattern.type)+'</b></div>'+
+        '<div class="row between"><span class="muted">ዋጋ ካርቴላ</span><b>'+(sessionCardValue(d) == null ? '?' : sessionCardValue(d))+' ብር</b></div>'+
         '<div class="row between"><span class="muted">ተጫወትቲ</span><b>'+d.playerCount+'</b></div>'+
         '<div class="row between"><span class="muted">ጠቕላላ ገንዘብ</span><b>'+fmtETB(d.totalPot)+' ብር</b></div>'+
         '<div class="row between"><span class="muted">ደራሽ</span><b>'+fmtETB(d.jackpot)+' ብር</b></div>'+
@@ -4328,16 +4407,32 @@ function _adminCreateSessionFormHTML(){
     '<div class="field"><label class="field-label">ኣገባብ ዓወት</label><select id="newSessionPattern">'+options+'</select></div>'+
     '<div class="field"><label class="field-label">ንውሓት ቆጸራ</label>'+
       '<select id="newSessionDuration"><option value="3">3 ደቓይቕ</option><option value="5" selected>5 ደቓይቕ</option><option value="10">10 ደቓይቕ</option></select></div>'+
+    '<div class="field"><label class="field-label">ዋጋ ካርቴላ</label>'+
+      '<select id="newSessionCardValue" onchange="_adminCardValueChanged()">'+CARD_VALUES.map(function(v){ return '<option value="'+v+'"'+(v === CARD_PRICE ? ' selected' : '')+'>'+v+' ብር</option>'; }).join('')+'</select>'+
+      '<div id="newSessionCardValueWarn" class="hidden" style="margin-top:8px; font-size:12.5px; color:var(--warning);">'+
+        '⚠️ ቅድሚ ዋጋ እዚ ክፍለ-ግዜ ምምዳብ ብ10 ብር ዝተገዝኡ ካርቴላታት ተመላሽ ክግበረሎም እዮም።<br>'+
+        '<span class="muted">Existing purchases made before the session price was established will be refunded if affected.</span></div></div>'+
     '<button class="btn btn-primary" onclick="_adminCreateSession()">ክፍለ-ግዜ ፍጠር</button>'+
   '</div>';
+}
+function _adminCardValueChanged(){
+  var sel = $('newSessionCardValue'), w = $('newSessionCardValueWarn');
+  if(sel && w) w.classList.toggle('hidden', parseInt(sel.value, 10) === CARD_PRICE);
 }
 function _adminCreateSession(){
   var pattern = $('newSessionPattern').value;
   var minutes = parseInt($('newSessionDuration').value, 10);
+  var cardValue = parseInt($('newSessionCardValue').value, 10);
+  if(CARD_VALUES.indexOf(cardValue) === -1){ showToast('ዋጋ ካርቴላ ዘይቅቡል እዩ።'); return; }
   if(!_market || _market.sessionId){ showToast(t('mp_not_ready')); return; }
+  var repriced = (cardValue !== CARD_PRICE);
+  if(repriced && (_market.playerCount || 0) > 0 &&
+     !confirm((_market.playerCount || 0) + ' ተጫወትቲ (' + fmtETB(_market.totalPot || 0) + ' ብር) ቅድሚ ሕጂ ብ10 ብር ተገዚኦም — ኣብዚ ' + cardValue + ' ብር ክፍለ-ግዜ ተመላሽ ክግበረሎም እዮም። ንቕጽል?')) return;
   var db = window._db, FV = firebase.firestore.FieldValue;
   var marketRef = db.collection('settings').doc('cardMarket');
-  var made = { id: null, roundId: null };
+  var made = { id: null, roundId: null, oldRoundId: null };
+  // repriced session -> brand-new round (own empty reservation doc); generated once, outside the retryable transaction callback
+  var newRoundId = repriced ? db.collection('cardReservations').doc().id : null;
   db.collection('sessions').orderBy('sessionNumber','desc').limit(1).get().then(function(qs){
     var nextNum = qs.empty ? 1 : (qs.docs[0].data().sessionNumber + 1);
     var newRef = db.collection('sessions').doc();
@@ -4351,22 +4446,35 @@ function _adminCreateSession(){
         if(!mSnap.exists) return Promise.reject('MARKET_NOT_READY');
         var m = mSnap.data();
         if(m.sessionId) return Promise.reject('SESSION_EXISTS');
-        made.roundId = m.roundId;
+        made.oldRoundId = m.roundId;
+        made.roundId = repriced ? newRoundId : m.roundId;
+        // 10 ETB: the session inherits the round's running totals (existing behaviour). 5 / 30 ETB: the pre-session purchases
+        // were made at the 10-ETB price, are refunded (never repriced, never counted), so the session starts from zero.
         tx.set(newRef, {
           status:'waiting', sessionNumber: nextNum, pattern: { type: pattern, name: PATTERN_DEFINITIONS[pattern].name },
-          roundId: m.roundId, totalCardCount: m.totalCardCount || 0, totalPot: m.totalPot || 0, jackpot: m.jackpot || 0, playerCount: m.playerCount || 0,
+          cardValue: cardValue, repricedFromRoundId: repriced ? m.roundId : null, repriceRefundsDone: !repriced,
+          roundId: made.roundId,
+          totalCardCount: repriced ? 0 : (m.totalCardCount || 0), totalPot: repriced ? 0 : (m.totalPot || 0),
+          jackpot: repriced ? 0 : (m.jackpot || 0), playerCount: repriced ? 0 : (m.playerCount || 0),
           deckSeed: deckSeed, calledNumbers:[], currentNumber:null, lastSequence:0,
           callerToken:null, callerUid:null, countdownEnd: countdownEnd, createdAt: FV.serverTimestamp(),
           startTime:null, endTime:null, resultEndAt:null, winnerId:null, winnerName:null, winnerPrize:null, winnerPaid:false,
           winnerCardId:null, winnerCardNumbers:null, pendingClaim:null, settlementInProgress:false, disqualifiedUids:[], disqualifiedCardIds:[]
         });
-        tx.update(marketRef, { sessionId: newRef.id });
+        if(repriced){
+          tx.update(marketRef, { roundId: newRoundId, sessionId: newRef.id, totalCardCount: 0, playerCount: 0, totalPot: 0, jackpot: 0 });
+          tx.set(db.collection('cardReservations').doc(newRoundId), { roundId: newRoundId, reserved: {} });
+        } else {
+          tx.update(marketRef, { sessionId: newRef.id });
+        }
         tx.set(db.collection('settings').doc('sessionControl'), { activeSessionId: newRef.id }, { merge:true });
       });
     });
   }).then(function(){
     showToast('ሓድሽ ክፍለ-ግዜ ተፈጢሩ ኣሎ።');
-    // resumable: if this browser closes now, players self-attach and the activation step attaches whatever is left
+    // 10 ETB - resumable: if this browser closes now, players self-attach and the activation step attaches whatever is left.
+    // 5 / 30 ETB - refund every old-round pending order at its recorded stake (resumable via _adminEnsureRepriceRefunds).
+    if(repriced) return _adminRunRepriceRefunds(made.id, made.oldRoundId);
     return _adminAttachPending(made.id, made.roundId);
   }).catch(function(e){ console.error(e); showToast('ክፍለ-ግዜ ምፍጣር ኣይተኻእለን።'); });
 }
